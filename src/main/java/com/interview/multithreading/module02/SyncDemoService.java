@@ -21,7 +21,6 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 @Service
 public class SyncDemoService {
-
     public DemoResult raceCondition() throws InterruptedException {
         // Broken shared counter
         class UnsafeCounter {
