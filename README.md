@@ -37,7 +37,7 @@ curl http://localhost:8080/actuator/threaddump
 | # | Module | What you practice |
 |---|--------|-------------------|
 | 01 | `01-basics` | Thread, Runnable, Callable, states, `start` vs `run`, join/interrupt/daemon |
-| 02 | `02-sync` | Monitor locks, **CAS (simple language)**, race, `synchronized`, wait/notify, `volatile`, ThreadLocal |
+| 02 | `02-sync` | Monitor, CAS, race, **wait/notify needs synchronized**, wait/notify demo, volatile, ThreadLocal |
 | 03 | `03-locks` | ReentrantLock, ReadWriteLock, Condition, StampedLock |
 | 04 | `04-executors` | Thread pools, Future, ScheduledExecutor, custom `ThreadPoolExecutor` |
 | 05 | `05-concurrent` | ConcurrentHashMap, BlockingQueue, Latch, Barrier, Semaphore, Phaser |
@@ -78,6 +78,7 @@ Suggested daily plan: **1–2 modules/day** → interview-ready in ~1 week.
 - `synchronized` vs `ReentrantLock`?
 - `volatile` vs `AtomicInteger`?
 - Why `wait()` must be in a loop?
+- Can you call `wait`/`notify` without `synchronized`? What exception?
 - `CountDownLatch` vs `CyclicBarrier` vs `Semaphore`?
 - How does `ConcurrentHashMap` differ from `HashMap`?
 - Explain `ThreadPoolExecutor` parameters (core, max, queue, rejection).

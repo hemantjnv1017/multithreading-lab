@@ -77,8 +77,8 @@ public class LearningController {
         body.put("modules", List.of(
                 module("01-basics", "Thread, Runnable, Callable, states, start vs run, join/interrupt/daemon",
                         List.of("extend-thread", "runnable-vs-callable", "thread-states", "start-vs-run", "join-interrupt-daemon", "all")),
-                module("02-sync", "Monitor locks, CAS (simple), race, synchronized, wait/notify, volatile, ThreadLocal",
-                        List.of("monitor-locks", "cas", "race-condition", "wait-notify", "volatile-visibility", "thread-local", "synchronized-scopes", "all")),
+                module("02-sync", "Monitor, CAS, race, wait/notify MUST use synchronized, volatile, ThreadLocal",
+                        List.of("monitor-locks", "cas", "race-condition", "wait-notify-needs-sync", "wait-notify", "volatile-visibility", "thread-local", "synchronized-scopes", "all")),
                 module("03-locks", "ReentrantLock, ReadWriteLock, Condition, StampedLock",
                         List.of("reentrant-lock", "read-write-lock", "condition", "stamped-lock", "all")),
                 module("04-executors", "Thread pools, Future, ScheduledExecutor, custom TPE",
@@ -132,6 +132,7 @@ public class LearningController {
                 case "monitor-locks" -> sync.monitorLocks();
                 case "cas" -> sync.casSimple();
                 case "race-condition" -> sync.raceCondition();
+                case "wait-notify-needs-sync" -> sync.waitNotifyNeedsSynchronized();
                 case "wait-notify" -> sync.waitNotifyProducerConsumer();
                 case "volatile-visibility" -> sync.volatileVisibility();
                 case "thread-local" -> sync.threadLocalDemo();

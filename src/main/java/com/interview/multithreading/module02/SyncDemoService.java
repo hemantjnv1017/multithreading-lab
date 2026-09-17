@@ -18,7 +18,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * - CAS (Compare-And-Swap) — see casSimple() — AtomicInteger uses this
  * - Race condition: shared mutable state without synchronization
  * - synchronized method vs synchronized block
- * - wait() / notify() / notifyAll() — must hold the monitor
+ * - wait() / notify() / notifyAll() — MUST hold the monitor (synchronized) — see waitNotifyNeedsSynchronized()
  * - volatile: visibility + ordering, NOT atomicity for compound actions
  * - happens-before relationships
  * - ThreadLocal: per-thread storage (watch for memory leaks in pools)
@@ -295,6 +295,87 @@ public class SyncDemoService {
                 ));
     }
 
+    /**
+     * Can you call wait/notify WITHOUT synchronized?
+     * Answer: NO — you must already hold that object's monitor.
+     */
+    public DemoResult waitNotifyNeedsSynchronized() {
+        List<String> simpleTheory = List.of(
+                "Q: wait/notify bina synchronized ke use kar sakte ho? → NAHI.",
+                "wait(), notify(), notifyAll() tabhi legal hain jab current thread USI object ka monitor hold karti ho.",
+                "Monitor kaise milta hai? → synchronized (obj) { ... } ya synchronized method on that object.",
+                "Bina monitor ke call → JVM phenkta hai IllegalMonitorStateException.",
+                "Kyun? wait() monitor RELEASE karke WAITING hoti hai; notify() usi monitor ke wait-set ko jagata hai — bina lock ke ye sense nahi banata.",
+                "Same object pe sync + wait hona chahiye: synchronized(lock) { lock.wait(); } — galat object pe wait mat karo.",
+                "Alternative (module 03): ReentrantLock + Condition.await()/signal() — wahan synchronized nahi, lekin lock.lock() zaroori hai.",
+                "volatile / CAS wait-notify ki jagah nahi — wo sirf visibility/atomic update dete hain, park/wake nahi."
+        );
+
+        Object lock = new Object();
+        List<String> logs = new ArrayList<>();
+
+        // 1) WITHOUT synchronized → must fail
+        try {
+            lock.wait(10);
+            logs.add("UNEXPECTED: wait() without sync succeeded");
+        } catch (IllegalMonitorStateException e) {
+            logs.add("WITHOUT synchronized: wait() → IllegalMonitorStateException (expected)");
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            logs.add("interrupted");
+        }
+
+        try {
+            lock.notify();
+            logs.add("UNEXPECTED: notify() without sync succeeded");
+        } catch (IllegalMonitorStateException e) {
+            logs.add("WITHOUT synchronized: notify() → IllegalMonitorStateException (expected)");
+        }
+
+        // 2) WITH synchronized → OK
+        synchronized (lock) {
+            logs.add("WITH synchronized: holding monitor of 'lock'");
+            lock.notifyAll(); // legal — we own the monitor (no waiters, but call is valid)
+            logs.add("WITH synchronized: notifyAll() OK");
+        }
+
+        // 3) Wrong pattern: synchronized on A, wait on B
+        Object a = new Object();
+        Object b = new Object();
+        try {
+            synchronized (a) {
+                b.wait(10); // hold A's monitor, but wait on B → still IllegalMonitorStateException
+            }
+            logs.add("UNEXPECTED: wait on B while sync on A succeeded");
+        } catch (IllegalMonitorStateException e) {
+            logs.add("sync(A) + B.wait() → IllegalMonitorStateException (must be SAME object)");
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+
+        Map<String, String> rules = new LinkedHashMap<>();
+        rules.put("correct", "synchronized (lock) { while (!ready) { lock.wait(); } lock.notifyAll(); }");
+        rules.put("wrong_no_sync", "lock.wait();  // IllegalMonitorStateException");
+        rules.put("wrong_different_object", "synchronized (a) { b.wait(); }  // also IllegalMonitorStateException");
+        rules.put("modern_alternative", "BlockingQueue / CountDownLatch — usually better than raw wait/notify");
+
+        List<String> interviewQandA = List.of(
+                "Q: wait bina synchronized? → No → IllegalMonitorStateException.",
+                "Q: Kyun synchronized chahiye? → wait/notify monitor pe kaam karte hain; sync se monitor milta hai.",
+                "Q: wait lock release karta hai? → Haan, phir wake ke baad dubara acquire karta hai.",
+                "Q: ReentrantLock pe wait? → Nahi; Condition.await() use karo after lock.lock()."
+        );
+
+        return DemoResult.of("02-sync", "wait-notify-needs-sync",
+                "wait/notify WITHOUT synchronized = IllegalMonitorStateException. Same object ka monitor hold karna zaroori hai.",
+                DemoResult.map(
+                        "simpleTheory", simpleTheory,
+                        "rules", rules,
+                        "interviewQandA", interviewQandA,
+                        "logs", logs
+                ));
+    }
+
     public DemoResult waitNotifyProducerConsumer() throws InterruptedException {
         List<String> logs = new CopyOnWriteArrayList<>();
         BlockingBuffer buffer = new BlockingBuffer(2, logs);
@@ -431,6 +512,7 @@ public class SyncDemoService {
                 monitorLocks(),
                 casSimple(),
                 raceCondition(),
+                waitNotifyNeedsSynchronized(),
                 waitNotifyProducerConsumer(),
                 volatileVisibility(),
                 threadLocalDemo(),
