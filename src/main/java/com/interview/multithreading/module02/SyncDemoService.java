@@ -370,6 +370,10 @@ public class SyncDemoService {
                 "wait/notify WITHOUT synchronized = IllegalMonitorStateException. Same object ka monitor hold karna zaroori hai.",
                 DemoResult.map(
                         "simpleTheory", simpleTheory,
+                        "waitSteps", WaitNotifyRevision.WAIT_STEPS,
+                        "notifySteps", WaitNotifyRevision.NOTIFY_STEPS,
+                        "notifyAllSteps", WaitNotifyRevision.NOTIFY_ALL_STEPS,
+                        "stateCheatSheet", WaitNotifyRevision.STATE_CHEAT_SHEET,
                         "rules", rules,
                         "interviewQandA", interviewQandA,
                         "logs", logs
@@ -407,7 +411,18 @@ public class SyncDemoService {
 
         return DemoResult.of("02-sync", "wait-notify",
                 "wait() releases the monitor; notify/notifyAll wakes waiters. Always wait in a while-loop (spurious wakeups).",
-                DemoResult.map("logs", logs));
+                DemoResult.map(
+                        "logs", logs,
+                        "waitSteps", WaitNotifyRevision.WAIT_STEPS,
+                        "notifySteps", WaitNotifyRevision.NOTIFY_STEPS,
+                        "notifyAllSteps", WaitNotifyRevision.NOTIFY_ALL_STEPS,
+                        "stateCheatSheet", WaitNotifyRevision.STATE_CHEAT_SHEET,
+                        "whyWhileNotIf", List.of(
+                                "1. Spurious wakeup: thread bina notify ke bhi jag sakti hai.",
+                                "2. notifyAll ke baad kai threads uthengi — condition dubara check karo.",
+                                "3. Isliye: while (!condition) { wait(); }  — if (!condition) galat hai."
+                        )
+                ));
     }
 
     public DemoResult volatileVisibility() throws InterruptedException {
@@ -523,6 +538,53 @@ public class SyncDemoService {
                 DemoResult.map("demos", parts.stream().map(DemoResult::demo).toList(), "results", parts));
     }
 
+    /**
+     * Revision cheat-sheet: exact steps for wait / notify / notifyAll.
+     * Memorize these for interviews.
+     */
+    static final class WaitNotifyRevision {
+
+        static final List<String> WAIT_STEPS = List.of(
+                "wait() — pre-condition: current thread MUST already hold this object's monitor (synchronized).",
+                "1. Thread releases (gives up) the monitor lock.",
+                "2. Thread goes to WAITING state and enters the wait-set (waiting queue) of that object.",
+                "3. Thread stays parked until: notify() / notifyAll() / interrupt / (timed wait timeout).",
+                "4. After wake-up, thread does NOT run critical section immediately.",
+                "5. Thread moves toward BLOCKED / contending — it must RE-ACQUIRE the same monitor first.",
+                "6. Only after getting the lock again does wait() return and code after wait() continues.",
+                "7. Always call wait() inside while (!condition) — re-check condition after wake-up."
+        );
+
+        static final List<String> NOTIFY_STEPS = List.of(
+                "notify() — pre-condition: current thread MUST hold this object's monitor.",
+                "1. Picks ONE waiting thread from this object's wait-set (if any) — choice is arbitrary (not fairness).",
+                "2. That one thread is moved out of WAITING → it will contend for the lock (typically BLOCKED until lock free).",
+                "3. Other waiting threads (if any) stay in the wait-set — still WAITING.",
+                "4. Caller (notifier) still HOLDS the monitor until it exits synchronized — woken thread cannot grab lock yet.",
+                "5. When notifier releases the monitor, the woken thread tries to acquire it.",
+                "6. Prefer notifyAll() unless you are sure exactly one waiter type exists (easy to cause missed signal with notify)."
+        );
+
+        static final List<String> NOTIFY_ALL_STEPS = List.of(
+                "notifyAll() — pre-condition: current thread MUST hold this object's monitor.",
+                "1. ALL threads in this object's wait-set are moved out of WAITING.",
+                "2. They all become eligible to acquire the lock (typically enter BLOCKED / contention for the monitor).",
+                "3. They all TRY to acquire the same lock.",
+                "4. Only ONE thread gets the lock at a time; others remain blocked until lock is free again.",
+                "5. Each thread that acquires lock re-checks while (!condition) — losers may wait() again.",
+                "6. Notifier still holds lock until synchronized block ends — then competition starts."
+        );
+
+        static final Map<String, String> STATE_CHEAT_SHEET = Map.of(
+                "WAITING", "called wait() — parked in wait-set, monitor already released",
+                "BLOCKED", "wants to enter synchronized / re-acquire monitor after wake — waiting for lock",
+                "RUNNABLE", "has the monitor (or ready to run) and executing",
+                "notify_vs_notifyAll", "notify = wake 1 waiter; notifyAll = wake all waiters (then 1 lock winner)"
+        );
+
+        private WaitNotifyRevision() {}
+    }
+
     /** Classic bounded buffer using wait/notify. */
     static class BlockingBuffer {
         private final int[] data;
@@ -537,26 +599,31 @@ public class SyncDemoService {
         }
 
         synchronized void put(int value) throws InterruptedException {
+            // while (not if): after wake, re-check "buffer full?"
             while (count == data.length) {
                 logs.add(Thread.currentThread().getName() + " waiting (buffer full)");
+                // wait(): release monitor → WAITING → later re-acquire → then continue
                 wait();
             }
             data[putIndex] = value;
             putIndex = (putIndex + 1) % data.length;
             count++;
             logs.add(Thread.currentThread().getName() + " put " + value + " count=" + count);
+            // notifyAll(): all waiters → leave wait-set → compete for THIS monitor; one wins at a time
             notifyAll();
         }
 
         synchronized int take() throws InterruptedException {
             while (count == 0) {
                 logs.add(Thread.currentThread().getName() + " waiting (buffer empty)");
+                // wait(): same steps as above (release → WAITING → re-acquire)
                 wait();
             }
             int value = data[takeIndex];
             takeIndex = (takeIndex + 1) % data.length;
             count--;
             logs.add(Thread.currentThread().getName() + " took " + value + " count=" + count);
+            // wake producers that may be waiting on "full"
             notifyAll();
             return value;
         }
