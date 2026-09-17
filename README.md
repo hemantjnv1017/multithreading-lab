@@ -37,7 +37,7 @@ curl http://localhost:8080/actuator/threaddump
 | # | Module | What you practice |
 |---|--------|-------------------|
 | 01 | `01-basics` | Thread, Runnable, Callable, states, `start` vs `run`, join/interrupt/daemon |
-| 02 | `02-sync` | Race conditions, `synchronized`, wait/notify, `volatile`, ThreadLocal |
+| 02 | `02-sync` | **Monitor locks (theory + demo)**, race, `synchronized`, wait/notify, `volatile`, ThreadLocal |
 | 03 | `03-locks` | ReentrantLock, ReadWriteLock, Condition, StampedLock |
 | 04 | `04-executors` | Thread pools, Future, ScheduledExecutor, custom `ThreadPoolExecutor` |
 | 05 | `05-concurrent` | ConcurrentHashMap, BlockingQueue, Latch, Barrier, Semaphore, Phaser |
@@ -73,6 +73,7 @@ Suggested daily plan: **1–2 modules/day** → interview-ready in ~1 week.
 - `Runnable` vs `Callable`? `start()` vs `run()`?
 - Thread lifecycle states?
 - What is a race condition? How do you fix it?
+- What is a **monitor / intrinsic lock**? BLOCKED vs WAITING?
 - `synchronized` vs `ReentrantLock`?
 - `volatile` vs `AtomicInteger`?
 - Why `wait()` must be in a loop?

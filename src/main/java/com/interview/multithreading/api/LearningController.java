@@ -77,8 +77,8 @@ public class LearningController {
         body.put("modules", List.of(
                 module("01-basics", "Thread, Runnable, Callable, states, start vs run, join/interrupt/daemon",
                         List.of("extend-thread", "runnable-vs-callable", "thread-states", "start-vs-run", "join-interrupt-daemon", "all")),
-                module("02-sync", "Race, synchronized, wait/notify, volatile, ThreadLocal",
-                        List.of("race-condition", "wait-notify", "volatile-visibility", "thread-local", "synchronized-scopes", "all")),
+                module("02-sync", "Monitor locks (theory), race, synchronized, wait/notify, volatile, ThreadLocal",
+                        List.of("monitor-locks", "race-condition", "wait-notify", "volatile-visibility", "thread-local", "synchronized-scopes", "all")),
                 module("03-locks", "ReentrantLock, ReadWriteLock, Condition, StampedLock",
                         List.of("reentrant-lock", "read-write-lock", "condition", "stamped-lock", "all")),
                 module("04-executors", "Thread pools, Future, ScheduledExecutor, custom TPE",
@@ -129,6 +129,7 @@ public class LearningController {
                 default -> unknown(moduleId, demo);
             };
             case "02-sync" -> switch (demo) {
+                case "monitor-locks" -> sync.monitorLocks();
                 case "race-condition" -> sync.raceCondition();
                 case "wait-notify" -> sync.waitNotifyProducerConsumer();
                 case "volatile-visibility" -> sync.volatileVisibility();

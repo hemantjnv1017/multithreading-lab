@@ -4,7 +4,9 @@ import com.interview.multithreading.common.DemoResult;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -12,8 +14,9 @@ import java.util.concurrent.atomic.AtomicInteger;
  * MODULE 02 — Synchronization & memory visibility
  *
  * Interview must-knows:
+ * - Monitor / intrinsic lock (every object has one) — see monitorLocks()
  * - Race condition: shared mutable state without synchronization
- * - synchronized method vs synchronized block (monitor / intrinsic lock)
+ * - synchronized method vs synchronized block
  * - wait() / notify() / notifyAll() — must hold the monitor
  * - volatile: visibility + ordering, NOT atomicity for compound actions
  * - happens-before relationships
@@ -21,6 +24,132 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 @Service
 public class SyncDemoService {
+
+    /**
+     * THEORY + hands-on: Monitor locks (intrinsic locks).
+     *
+     * In Java, every Object has an associated monitor. synchronized uses that monitor.
+     * This is NOT ReentrantLock — that is an explicit lock (module 03).
+     */
+    public DemoResult monitorLocks() throws InterruptedException {
+        List<String> logs = new CopyOnWriteArrayList<>();
+        List<String> theory = List.of(
+                "1. Monitor (intrinsic lock) = hidden lock built into EVERY Java object.",
+                "2. synchronized(obj) / synchronized method → acquire that object's monitor.",
+                "3. Only ONE thread holds a given monitor at a time (mutual exclusion).",
+                "4. Other threads needing the same monitor enter BLOCKED state (not WAITING).",
+                "5. wait()/notify()/notifyAll() work ONLY while holding that same monitor.",
+                "6. wait() RELEASES the monitor, then parks; notify wakes a waiter (still must re-acquire).",
+                "7. Monitors are REENTRANT: same thread can enter synchronized on same object again.",
+                "8. static synchronized → monitor of the Class object (MyClass.class), not 'this'.",
+                "9. Prefer private final Object lock = new Object(); — never sync on public/this if avoidable.",
+                "10. Monitor lock ≠ ReentrantLock. Monitor = synchronized. Explicit = java.util.concurrent.locks."
+        );
+
+        Object monitor = new Object(); // this object's intrinsic lock = our monitor
+
+        // Demo: two threads contend for the SAME monitor → one runs, other BLOCKED
+        CountDownLatch bothStarted = new CountDownLatch(2);
+        CountDownLatch holderInside = new CountDownLatch(1);
+
+        Thread holder = new Thread(() -> {
+            synchronized (monitor) {
+                logs.add("HOLDER acquired monitor; state peers may be BLOCKED");
+                bothStarted.countDown();
+                holderInside.countDown();
+                try {
+                    Thread.sleep(200); // hold monitor so peer blocks
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+                logs.add("HOLDER releasing monitor");
+            }
+        }, "monitor-holder");
+
+        Thread contender = new Thread(() -> {
+            try {
+                bothStarted.countDown();
+                holderInside.await(); // ensure holder already inside synchronized
+                Thread.sleep(20);
+                logs.add("CONTENDER before sync, holderAlive — will BLOCK until holder exits");
+                synchronized (monitor) {
+                    logs.add("CONTENDER acquired monitor after holder released");
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }, "monitor-contender");
+
+        holder.start();
+        contender.start();
+        Thread.sleep(80); // mid-hold snapshot
+        logs.add("Snapshot while holder inside: contender.state=" + contender.getState()); // expect BLOCKED
+        holder.join();
+        contender.join();
+
+        // Reentrancy: same thread acquires monitor twice
+        synchronized (monitor) {
+            logs.add("outer synchronized entered");
+            synchronized (monitor) {
+                logs.add("inner synchronized entered (REENTRANT — same thread, same monitor)");
+            }
+        }
+
+        // Different monitors do NOT block each other
+        Object monitorA = new Object();
+        Object monitorB = new Object();
+        CountDownLatch parallel = new CountDownLatch(2);
+        Thread tA = new Thread(() -> {
+            synchronized (monitorA) {
+                logs.add("ThreadA holds monitorA (independent of monitorB)");
+                parallel.countDown();
+                try {
+                    parallel.await();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+        }, "mon-A");
+        Thread tB = new Thread(() -> {
+            synchronized (monitorB) {
+                logs.add("ThreadB holds monitorB (independent of monitorA)");
+                parallel.countDown();
+                try {
+                    parallel.await();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+        }, "mon-B");
+        tA.start();
+        tB.start();
+        tA.join();
+        tB.join();
+
+        Map<String, String> compare = new LinkedHashMap<>();
+        compare.put("monitor/intrinsic", "synchronized, wait/notify — built into Object");
+        compare.put("explicit lock", "ReentrantLock, ReadWriteLock — java.util.concurrent.locks");
+        compare.put("BLOCKED vs WAITING", "BLOCKED = waiting to ENTER synchronized; WAITING = called wait()/join()");
+        compare.put("visibility", "Exiting synchronized flushes writes; entering sees latest (happens-before)");
+
+        List<String> interviewAnswers = List.of(
+                "Q: What is a monitor lock? → Intrinsic lock associated with every object; used by synchronized.",
+                "Q: Can two threads hold different objects' monitors? → Yes — locks are per-object.",
+                "Q: Is synchronized reentrant? → Yes.",
+                "Q: Does wait() keep the lock? → No, it releases the monitor until woken + re-acquired.",
+                "Q: Monitor vs Lock interface? → Monitor = language intrinsic; Lock = explicit API (tryLock, fairness...)."
+        );
+
+        return DemoResult.of("02-sync", "monitor-locks",
+                "Monitor = object's intrinsic lock. synchronized acquires it. BLOCKED = waiting for monitor. Explicit locks are module 03.",
+                DemoResult.map(
+                        "theory", theory,
+                        "compareWithExplicitLocks", compare,
+                        "interviewQandA", interviewAnswers,
+                        "logs", logs
+                ));
+    }
+
     public DemoResult raceCondition() throws InterruptedException {
         // Broken shared counter
         class UnsafeCounter {
@@ -205,6 +334,7 @@ public class SyncDemoService {
 
     public DemoResult all() throws Exception {
         List<DemoResult> parts = List.of(
+                monitorLocks(),
                 raceCondition(),
                 waitNotifyProducerConsumer(),
                 volatileVisibility(),

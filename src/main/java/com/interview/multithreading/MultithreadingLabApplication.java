@@ -10,7 +10,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
  *
  * Learning path (in order):
  *  01 Basics        → Thread, Runnable, Callable, Thread states
- *  02 Sync          → synchronized, wait/notify, volatile, ThreadLocal
+ *  02 Sync          → monitor locks, synchronized, wait/notify, volatile, ThreadLocal
  *  03 Locks         → ReentrantLock, ReadWriteLock, Condition, StampedLock
  *  04 Executors     → Thread pools, Future, ScheduledExecutor
  *  05 Concurrent    → ConcurrentHashMap, BlockingQueue, Latch, Barrier, Semaphore
