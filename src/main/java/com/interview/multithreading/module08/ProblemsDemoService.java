@@ -30,7 +30,7 @@ public class ProblemsDemoService {
         Account a = new Account(1000);
         Account b = new Account(1000);
 
-        // UNSAFE transfer
+        // UNSAFE: two threads mutate shared balances with NO lock → race (lost updates / wrong total)
         Runnable unsafeTransfer = () -> {
             for (int i = 0; i < 1000; i++) {
                 a.balance -= 1;
@@ -46,16 +46,24 @@ public class ProblemsDemoService {
         u2.join();
         int unsafeTotal = a.balance + b.balance;
 
-        // SAFE transfer with ordered locks
+        // SAFE: both threads must take the SAME monitor before touching c/d
         Account c = new Account(1000);
         Account d = new Account(1000);
+
+        // Dedicated lock object — not used for data, only as a monitor for synchronized.
+        // Every Java object has exactly one intrinsic (monitor) lock.
+        // We create a private Object so:
+        //   1) synchronized(lock) can acquire THAT object's monitor
+        //   2) we don't sync on 'this' / Account (outsiders could lock those and block us)
+        //   3) one shared lock serializes ALL transfers → no race on c.balance / d.balance
         Object lock = new Object();
+
         Runnable safeTransfer = () -> {
             for (int i = 0; i < 1000; i++) {
-                synchronized (lock) {
+                synchronized (lock) { // acquire lock's monitor; other thread waits (BLOCKED) if busy
                     c.balance -= 1;
                     d.balance += 1;
-                }
+                } // monitor released here
             }
         };
         Thread s1 = new Thread(safeTransfer);
