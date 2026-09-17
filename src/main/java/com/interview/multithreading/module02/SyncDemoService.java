@@ -15,6 +15,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  *
  * Interview must-knows:
  * - Monitor / intrinsic lock (every object has one) — see monitorLocks()
+ * - CAS (Compare-And-Swap) — see casSimple() — AtomicInteger uses this
  * - Race condition: shared mutable state without synchronization
  * - synchronized method vs synchronized block
  * - wait() / notify() / notifyAll() — must hold the monitor
@@ -146,6 +147,99 @@ public class SyncDemoService {
                         "theory", theory,
                         "compareWithExplicitLocks", compare,
                         "interviewQandA", interviewAnswers,
+                        "logs", logs
+                ));
+    }
+
+    /**
+     * CAS in simple language + small demo.
+     *
+     * CAS = Compare-And-Swap.
+     * Plain English: "Agar value abhi bhi wahi hai jo main soch raha hoon, tabhi badalna — warna mat badalna."
+     */
+    public DemoResult casSimple() throws InterruptedException {
+        List<String> simpleTheory = List.of(
+                "CAS full form: Compare-And-Swap.",
+                "Simple meaning: pehle check karo value expected hai ya nahi; agar HAAN to naya value set karo — ye 3 steps CPU ek saath (atomic) karta hai.",
+                "Example: box mein 5 hai. Thread kehta hai: 'agar abhi 5 hai to 6 kar do'. Agar kisi ne pehle hi 7 kar diya, CAS fail → dubara try.",
+                "Isliye lock ki zarurat nahi padti counters ke liye — AtomicInteger andar CAS use karta hai.",
+                "compareAndSet(expected, newValue) Java ka CAS API hai: true = success, false = fail.",
+                "incrementAndGet() = baar-baar CAS try karo jab tak success na ho (optimistic retry loop).",
+                "Lock (synchronized) = pehle room band karo, phir kaam. CAS = bina lock ke try; fail pe dobara try.",
+                "ABA problem (advanced): value A→B→A ho jaye to CAS sochta hai 'same hai' — kabhi galat success. AtomicStampedReference fix karta hai."
+        );
+
+        List<String> logs = new CopyOnWriteArrayList<>();
+        AtomicInteger box = new AtomicInteger(5);
+
+        // Success path
+        boolean ok = box.compareAndSet(5, 6);
+        logs.add("CAS(expect=5, new=6) → " + ok + ", box=" + box.get());
+
+        // Fail path — expected wrong
+        boolean fail = box.compareAndSet(5, 99);
+        logs.add("CAS(expect=5, new=99) → " + fail + " (fail because box is already 6), box=" + box.get());
+
+        // Manual retry loop = what incrementAndGet roughly does
+        AtomicInteger counter = new AtomicInteger(0);
+        int threads = 8;
+        int perThread = 1000;
+        ExecutorService pool = Executors.newFixedThreadPool(threads);
+        CountDownLatch done = new CountDownLatch(threads);
+        for (int i = 0; i < threads; i++) {
+            pool.submit(() -> {
+                try {
+                    for (int j = 0; j < perThread; j++) {
+                        // DIY CAS loop (same idea as incrementAndGet)
+                        while (true) {
+                            int old = counter.get();
+                            int next = old + 1;
+                            if (counter.compareAndSet(old, next)) {
+                                break; // success
+                            }
+                            // fail = kisi aur ne change kar diya → loop again
+                        }
+                    }
+                } finally {
+                    done.countDown();
+                }
+            });
+        }
+        done.await();
+        pool.shutdown();
+
+        int expected = threads * perThread;
+        logs.add("DIY CAS increment: expected=" + expected + " got=" + counter.get());
+
+        // Built-in AtomicInteger
+        AtomicInteger builtin = new AtomicInteger(0);
+        for (int i = 0; i < 100; i++) {
+            builtin.incrementAndGet(); // uses CAS inside
+        }
+        logs.add("AtomicInteger.incrementAndGet x100 → " + builtin.get());
+
+        Map<String, String> lockVsCas = new LinkedHashMap<>();
+        lockVsCas.put("synchronized/Lock", "Pehle lock lo, phir update. Doosri thread wait (BLOCKED) karti hai.");
+        lockVsCas.put("CAS", "Bina lock try karo. Agar fail → turant dubara try. Zyada tar counters ke liye faster.");
+        lockVsCas.put("Kab lock?", "Bada critical section, wait/notify, kai variables saath.");
+        lockVsCas.put("Kab CAS?", "Single variable counter/flag, ConcurrentHashMap internals, lock-free ideas.");
+
+        List<String> interviewQandA = List.of(
+                "Q: CAS kya hai? → Atomic 'agar abhi expected hai to new value set karo'.",
+                "Q: Java mein kahan? → AtomicInteger.compareAndSet / incrementAndGet, ConcurrentHashMap.",
+                "Q: Fail hone pe kya? → Usually retry loop.",
+                "Q: Lock se fark? → Lock blocks; CAS optimistic + retry.",
+                "Q: ABA? → Value wapas same dikhe to CAS dhokha kha sakta hai."
+        );
+
+        return DemoResult.of("02-sync", "cas",
+                "CAS = Compare-And-Swap: 'agar value abhi bhi X hai to Y kar do' — AtomicInteger isi pe chalta hai, lock nahi.",
+                DemoResult.map(
+                        "simpleTheory", simpleTheory,
+                        "lockVsCas", lockVsCas,
+                        "interviewQandA", interviewQandA,
+                        "diyCasFinalCount", counter.get(),
+                        "diyCasExpected", expected,
                         "logs", logs
                 ));
     }
@@ -335,6 +429,7 @@ public class SyncDemoService {
     public DemoResult all() throws Exception {
         List<DemoResult> parts = List.of(
                 monitorLocks(),
+                casSimple(),
                 raceCondition(),
                 waitNotifyProducerConsumer(),
                 volatileVisibility(),
