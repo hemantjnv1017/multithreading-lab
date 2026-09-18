@@ -11,15 +11,14 @@ import java.util.List;
 import java.util.concurrent.*;
 
 /**
- * MODULE 10 — Virtual threads (Project Loom / Java 21)
+ * MODULE 10 — Virtual threads (Java 21) (~3 YOE)
  *
- * Interview must-knows:
- * - Platform thread vs virtual thread
- * - Virtual threads are cheap → one-per-task is OK for blocking I/O
- * - Still need synchronization for shared mutable state
- * - Don't pool virtual threads; don't pin them with long synchronized/JNI
- * - Spring Boot 3.2+: spring.threads.virtual.enabled=true
- * - Structured concurrency (preview) — mention in interviews
+ * Must-knows:
+ * - Platform vs virtual thread
+ * - Virtual = cheap for many blocking I/O tasks
+ * - Shared mutable state pe sync ab bhi chahiye
+ * - Pinning: long synchronized pe block = carrier thread stuck (basic idea)
+ * - Spring: spring.threads.virtual.enabled=true
  */
 @Service
 public class VirtualThreadsDemoService {
@@ -51,8 +50,8 @@ public class VirtualThreadsDemoService {
     }
 
     public DemoResult millionThreadsSmoke() throws InterruptedException {
-        // Creating 100k virtual threads is fine; 100k platform threads would crush the machine
-        int n = 100_000;
+        // Interview: many blocking virtual threads OK; don't do this with platform threads
+        int n = 10_000;
         CountDownLatch latch = new CountDownLatch(n);
         long start = System.currentTimeMillis();
 
@@ -60,7 +59,7 @@ public class VirtualThreadsDemoService {
             for (int i = 0; i < n; i++) {
                 executor.submit(() -> {
                     try {
-                        Thread.sleep(Duration.ofMillis(10));
+                        Thread.sleep(Duration.ofMillis(5));
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
                     } finally {
@@ -72,7 +71,7 @@ public class VirtualThreadsDemoService {
         }
 
         return DemoResult.of("10-virtual", "scale-smoke",
-                "100k blocking virtual threads is normal. Same with platform threads ≈ death.",
+                "10k blocking virtual threads OK. Same with platform threads = trouble.",
                 DemoResult.map("virtualThreads", n, "elapsedMs", System.currentTimeMillis() - start));
     }
 

@@ -10,14 +10,18 @@ Every concept is a runnable demo with an `interviewTip` in the JSON response. Re
 
 ```bash
 # needs JDK 21+
-./mvnw spring-boot:run
-# or if you have Maven installed:
 mvn spring-boot:run
 ```
 
-Open: [http://localhost:8080/api/modules](http://localhost:8080/api/modules)
+**Swagger UI (easiest — no Postman):**  
+[http://localhost:8080/swagger-ui/index.html](http://localhost:8080/swagger-ui/index.html)  
+Shortcuts: [http://localhost:8080/](http://localhost:8080/) or [http://localhost:8080/docs](http://localhost:8080/docs)
 
-Run a module:
+> App restart zaroori hai after adding Swagger (`Ctrl+C` then `mvn spring-boot:run`).
+
+OpenAPI JSON: [http://localhost:8080/v3/api-docs](http://localhost:8080/v3/api-docs)
+
+Raw catalog: [http://localhost:8080/api/modules](http://localhost:8080/api/modules)
 
 ```bash
 curl http://localhost:8080/api/modules/01-basics
@@ -36,9 +40,9 @@ curl http://localhost:8080/actuator/threaddump
 
 | # | Module | What you practice |
 |---|--------|-------------------|
-| 01 | `01-basics` | Thread, Runnable, Callable, states, `start` vs `run`, join/interrupt/daemon |
-| 02 | `02-sync` | Monitor, CAS, race, **wait/notify needs synchronized**, wait/notify demo, volatile, ThreadLocal |
-| 03 | `03-locks` | ReentrantLock, ReadWriteLock, Condition, StampedLock |
+| 01 | `01-basics` | Runnable/Callable, start vs run, **join order**, **wait vs sleep**, states |
+| 02 | `02-sync` | Monitor, CAS, race, wait/notify, **spurious wakeup**, volatile, ThreadLocal |
+| 03 | `03-locks` | ReentrantLock, **lock vs tryLock**, ReadWriteLock, Condition, StampedLock |
 | 04 | `04-executors` | Thread pools, Future, ScheduledExecutor, custom `ThreadPoolExecutor` |
 | 05 | `05-concurrent` | ConcurrentHashMap, BlockingQueue, Latch, Barrier, Semaphore, Phaser |
 | 06 | `06-completable` | CompletableFuture chaining, combine, errors, fan-out/fan-in |
@@ -63,29 +67,25 @@ src/main/java/com/interview/multithreading/moduleXX/
 4. **Break it on purpose** (remove `volatile`, remove `synchronized`, reverse lock order) and re-run.
 5. Fix it again. That is how you build real hands-on memory.
 
-Suggested daily plan: **1–2 modules/day** → interview-ready in ~1 week.
+Suggested daily plan: **1–2 modules/day**. Content is tuned for **~3–4 years Java experience** interviews.
+
+**Full question bank (LinkedIn / mid-level themes):** see [`INTERVIEW-QUESTIONS-3-4YOE.md`](INTERVIEW-QUESTIONS-3-4YOE.md)
 
 ---
 
-## Top interview questions this lab prepares you for
+## Top interview questions (~3 YOE focus)
 
-- Difference between process and thread? User vs daemon thread?
-- `Runnable` vs `Callable`? `start()` vs `run()`?
-- Thread lifecycle states?
-- What is a race condition? How do you fix it?
-- What is a **monitor / intrinsic lock**? BLOCKED vs WAITING?
-- What is **CAS**? How does `AtomicInteger` work without synchronized?
-- `synchronized` vs `ReentrantLock`?
-- `volatile` vs `AtomicInteger`?
-- Why `wait()` must be in a loop?
-- Can you call `wait`/`notify` without `synchronized`? What exception?
-- `CountDownLatch` vs `CyclicBarrier` vs `Semaphore`?
-- How does `ConcurrentHashMap` differ from `HashMap`?
-- Explain `ThreadPoolExecutor` parameters (core, max, queue, rejection).
-- `thenApply` vs `thenCompose`? `allOf` vs `anyOf`?
-- What causes deadlock? Four Coffman conditions? Prevention?
-- What are virtual threads? When to use them? What is pinning?
-- Why does `@Async` fail on self-invocation?
+- Process vs thread? `start()` vs `run()`? Runnable vs Callable?
+- Race condition — kaise fix?
+- Monitor / synchronized? BLOCKED vs WAITING?
+- CAS / AtomicInteger? `lock()` vs `tryLock()`?
+- `volatile` vs Atomic? wait bina synchronized? Why `while` not `if`?
+- Latch vs Barrier vs Semaphore? CHM vs HashMap?
+- ThreadPoolExecutor: core, max, queue, rejection (high level)
+- CompletableFuture: thenApply vs thenCompose; allOf
+- Deadlock kya / kaise avoid (lock order, tryLock)?
+- Virtual threads kab? Pinning kya (basic)?
+- `@Async` self-invocation kyun fail?
 
 ---
 

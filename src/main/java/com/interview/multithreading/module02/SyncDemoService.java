@@ -11,17 +11,15 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * MODULE 02 — Synchronization & memory visibility
+ * MODULE 02 — Synchronization & memory visibility (~3 YOE interview focus)
  *
- * Interview must-knows:
- * - Monitor / intrinsic lock (every object has one) — see monitorLocks()
- * - CAS (Compare-And-Swap) — see casSimple() — AtomicInteger uses this
- * - Race condition: shared mutable state without synchronization
- * - synchronized method vs synchronized block
- * - wait() / notify() / notifyAll() — MUST hold the monitor (synchronized) — see waitNotifyNeedsSynchronized()
- * - volatile: visibility + ordering, NOT atomicity for compound actions
- * - happens-before relationships
- * - ThreadLocal: per-thread storage (watch for memory leaks in pools)
+ * Must-knows:
+ * - Monitor / intrinsic lock — monitorLocks()
+ * - CAS + AtomicInteger — casSimple()
+ * - Race condition, synchronized method vs block
+ * - wait/notify need synchronized — waitNotifyNeedsSynchronized()
+ * - Spurious wakeup → while (!condition) wait() — spuriousWakeup()
+ * - volatile = visibility (not atomic i++); ThreadLocal + remove() in pools
  */
 @Service
 public class SyncDemoService {
@@ -35,16 +33,12 @@ public class SyncDemoService {
     public DemoResult monitorLocks() throws InterruptedException {
         List<String> logs = new CopyOnWriteArrayList<>();
         List<String> theory = List.of(
-                "1. Monitor (intrinsic lock) = hidden lock built into EVERY Java object.",
-                "2. synchronized(obj) / synchronized method → acquire that object's monitor.",
-                "3. Only ONE thread holds a given monitor at a time (mutual exclusion).",
-                "4. Other threads needing the same monitor enter BLOCKED state (not WAITING).",
-                "5. wait()/notify()/notifyAll() work ONLY while holding that same monitor.",
-                "6. wait() RELEASES the monitor, then parks; notify wakes a waiter (still must re-acquire).",
-                "7. Monitors are REENTRANT: same thread can enter synchronized on same object again.",
-                "8. static synchronized → monitor of the Class object (MyClass.class), not 'this'.",
-                "9. Prefer private final Object lock = new Object(); — never sync on public/this if avoidable.",
-                "10. Monitor lock ≠ ReentrantLock. Monitor = synchronized. Explicit = java.util.concurrent.locks."
+                "1. Monitor = har Java object ke saath hidden intrinsic lock.",
+                "2. synchronized → usi object ka monitor acquire hota hai.",
+                "3. Ek monitor pe ek time pe ek hi thread (mutual exclusion).",
+                "4. Doosri thread BLOCKED hoti hai jab tak monitor free na ho.",
+                "5. wait/notify bhi usi monitor pe — pehle synchronized zaroori.",
+                "6. Prefer private final Object lock = new Object(); (this pe sync avoid)."
         );
 
         Object monitor = new Object(); // this object's intrinsic lock = our monitor
@@ -83,66 +77,31 @@ public class SyncDemoService {
 
         holder.start();
         contender.start();
-        Thread.sleep(80); // mid-hold snapshot
-        logs.add("Snapshot while holder inside: contender.state=" + contender.getState()); // expect BLOCKED
+        Thread.sleep(80);
+        logs.add("Snapshot while holder inside: contender.state=" + contender.getState()); // BLOCKED
         holder.join();
         contender.join();
 
-        // Reentrancy: same thread acquires monitor twice
+        // reentrant: same thread, same monitor again OK
         synchronized (monitor) {
-            logs.add("outer synchronized entered");
             synchronized (monitor) {
-                logs.add("inner synchronized entered (REENTRANT — same thread, same monitor)");
+                logs.add("reentrant: same thread entered synchronized twice");
             }
         }
 
-        // Different monitors do NOT block each other
-        Object monitorA = new Object();
-        Object monitorB = new Object();
-        CountDownLatch parallel = new CountDownLatch(2);
-        Thread tA = new Thread(() -> {
-            synchronized (monitorA) {
-                logs.add("ThreadA holds monitorA (independent of monitorB)");
-                parallel.countDown();
-                try {
-                    parallel.await();
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                }
-            }
-        }, "mon-A");
-        Thread tB = new Thread(() -> {
-            synchronized (monitorB) {
-                logs.add("ThreadB holds monitorB (independent of monitorA)");
-                parallel.countDown();
-                try {
-                    parallel.await();
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                }
-            }
-        }, "mon-B");
-        tA.start();
-        tB.start();
-        tA.join();
-        tB.join();
-
         Map<String, String> compare = new LinkedHashMap<>();
-        compare.put("monitor/intrinsic", "synchronized, wait/notify — built into Object");
-        compare.put("explicit lock", "ReentrantLock, ReadWriteLock — java.util.concurrent.locks");
-        compare.put("BLOCKED vs WAITING", "BLOCKED = waiting to ENTER synchronized; WAITING = called wait()/join()");
-        compare.put("visibility", "Exiting synchronized flushes writes; entering sees latest (happens-before)");
+        compare.put("monitor", "synchronized + wait/notify");
+        compare.put("explicit lock", "ReentrantLock — tryLock possible (module 03)");
+        compare.put("BLOCKED vs WAITING", "BLOCKED = sync entry wait; WAITING = wait()/join()");
 
         List<String> interviewAnswers = List.of(
-                "Q: What is a monitor lock? → Intrinsic lock associated with every object; used by synchronized.",
-                "Q: Can two threads hold different objects' monitors? → Yes — locks are per-object.",
-                "Q: Is synchronized reentrant? → Yes.",
-                "Q: Does wait() keep the lock? → No, it releases the monitor until woken + re-acquired.",
-                "Q: Monitor vs Lock interface? → Monitor = language intrinsic; Lock = explicit API (tryLock, fairness...)."
+                "Q: Monitor? → Object ka intrinsic lock.",
+                "Q: synchronized reentrant? → Haan.",
+                "Q: wait lock rakhta hai? → Nahi, release karta hai."
         );
 
         return DemoResult.of("02-sync", "monitor-locks",
-                "Monitor = object's intrinsic lock. synchronized acquires it. BLOCKED = waiting for monitor. Explicit locks are module 03.",
+                "Monitor = object's intrinsic lock. synchronized acquires it. BLOCKED = waiting for monitor.",
                 DemoResult.map(
                         "theory", theory,
                         "compareWithExplicitLocks", compare,
@@ -159,14 +118,10 @@ public class SyncDemoService {
      */
     public DemoResult casSimple() throws InterruptedException {
         List<String> simpleTheory = List.of(
-                "CAS full form: Compare-And-Swap.",
-                "Simple meaning: pehle check karo value expected hai ya nahi; agar HAAN to naya value set karo — ye 3 steps CPU ek saath (atomic) karta hai.",
-                "Example: box mein 5 hai. Thread kehta hai: 'agar abhi 5 hai to 6 kar do'. Agar kisi ne pehle hi 7 kar diya, CAS fail → dubara try.",
-                "Isliye lock ki zarurat nahi padti counters ke liye — AtomicInteger andar CAS use karta hai.",
-                "compareAndSet(expected, newValue) Java ka CAS API hai: true = success, false = fail.",
-                "incrementAndGet() = baar-baar CAS try karo jab tak success na ho (optimistic retry loop).",
-                "Lock (synchronized) = pehle room band karo, phir kaam. CAS = bina lock ke try; fail pe dobara try.",
-                "ABA problem (advanced): value A→B→A ho jaye to CAS sochta hai 'same hai' — kabhi galat success. AtomicStampedReference fix karta hai."
+                "CAS = Compare-And-Swap: agar value abhi bhi expected hai to new set karo (atomic).",
+                "Example: 5 hai → 'agar 5 hai to 6 karo'. Kisi ne 7 kar diya → fail → retry.",
+                "Java: AtomicInteger.compareAndSet / incrementAndGet (andar CAS loop).",
+                "Lock = pehle band karo phir update. CAS = try; fail pe dubara try (counters ke liye common)."
         );
 
         List<String> logs = new CopyOnWriteArrayList<>();
@@ -219,17 +174,16 @@ public class SyncDemoService {
         logs.add("AtomicInteger.incrementAndGet x100 → " + builtin.get());
 
         Map<String, String> lockVsCas = new LinkedHashMap<>();
-        lockVsCas.put("synchronized/Lock", "Pehle lock lo, phir update. Doosri thread wait (BLOCKED) karti hai.");
-        lockVsCas.put("CAS", "Bina lock try karo. Agar fail → turant dubara try. Zyada tar counters ke liye faster.");
-        lockVsCas.put("Kab lock?", "Bada critical section, wait/notify, kai variables saath.");
-        lockVsCas.put("Kab CAS?", "Single variable counter/flag, ConcurrentHashMap internals, lock-free ideas.");
+        lockVsCas.put("Lock/synchronized", "Block karke exclusive update");
+        lockVsCas.put("CAS", "Bina lock try + retry — counters/flags ke liye");
+        lockVsCas.put("Kab lock", "Bada critical section / kai fields saath");
+        lockVsCas.put("Kab CAS", "Simple counter — AtomicInteger");
 
         List<String> interviewQandA = List.of(
-                "Q: CAS kya hai? → Atomic 'agar abhi expected hai to new value set karo'.",
-                "Q: Java mein kahan? → AtomicInteger.compareAndSet / incrementAndGet, ConcurrentHashMap.",
-                "Q: Fail hone pe kya? → Usually retry loop.",
-                "Q: Lock se fark? → Lock blocks; CAS optimistic + retry.",
-                "Q: ABA? → Value wapas same dikhe to CAS dhokha kha sakta hai."
+                "Q: CAS? → Atomic 'expected ho to new value set'.",
+                "Q: Java kahan? → AtomicInteger, aksar ConcurrentHashMap andar.",
+                "Q: Fail pe? → Retry loop (incrementAndGet aisa hi karta hai).",
+                "Q: Lock se fark? → Lock blocks; CAS fail-fast + retry."
         );
 
         return DemoResult.of("02-sync", "cas",
@@ -301,14 +255,10 @@ public class SyncDemoService {
      */
     public DemoResult waitNotifyNeedsSynchronized() {
         List<String> simpleTheory = List.of(
-                "Q: wait/notify bina synchronized ke use kar sakte ho? → NAHI.",
-                "wait(), notify(), notifyAll() tabhi legal hain jab current thread USI object ka monitor hold karti ho.",
-                "Monitor kaise milta hai? → synchronized (obj) { ... } ya synchronized method on that object.",
-                "Bina monitor ke call → JVM phenkta hai IllegalMonitorStateException.",
-                "Kyun? wait() monitor RELEASE karke WAITING hoti hai; notify() usi monitor ke wait-set ko jagata hai — bina lock ke ye sense nahi banata.",
-                "Same object pe sync + wait hona chahiye: synchronized(lock) { lock.wait(); } — galat object pe wait mat karo.",
-                "Alternative (module 03): ReentrantLock + Condition.await()/signal() — wahan synchronized nahi, lekin lock.lock() zaroori hai.",
-                "volatile / CAS wait-notify ki jagah nahi — wo sirf visibility/atomic update dete hain, park/wake nahi."
+                "wait/notify bina synchronized? → NAHI.",
+                "Pehle usi object pe synchronized lo, phir wait/notify.",
+                "Bina monitor → IllegalMonitorStateException.",
+                "Same object: synchronized(lock) { lock.wait(); } — alag object pe wait mat karo."
         );
 
         Object lock = new Object();
@@ -354,26 +304,20 @@ public class SyncDemoService {
         }
 
         Map<String, String> rules = new LinkedHashMap<>();
-        rules.put("correct", "synchronized (lock) { while (!ready) { lock.wait(); } lock.notifyAll(); }");
-        rules.put("wrong_no_sync", "lock.wait();  // IllegalMonitorStateException");
-        rules.put("wrong_different_object", "synchronized (a) { b.wait(); }  // also IllegalMonitorStateException");
-        rules.put("modern_alternative", "BlockingQueue / CountDownLatch — usually better than raw wait/notify");
+        rules.put("correct", "synchronized (lock) { while (!ready) { lock.wait(); } }");
+        rules.put("wrong", "lock.wait(); // IllegalMonitorStateException");
 
         List<String> interviewQandA = List.of(
-                "Q: wait bina synchronized? → No → IllegalMonitorStateException.",
-                "Q: Kyun synchronized chahiye? → wait/notify monitor pe kaam karte hain; sync se monitor milta hai.",
-                "Q: wait lock release karta hai? → Haan, phir wake ke baad dubara acquire karta hai.",
-                "Q: ReentrantLock pe wait? → Nahi; Condition.await() use karo after lock.lock()."
+                "Q: wait bina sync? → No → IllegalMonitorStateException.",
+                "Q: Kyun sync? → wait/notify ko monitor chahiye.",
+                "Q: wait lock release? → Haan, phir wake ke baad dubara leta hai.",
+                "Q: Production tip? → Prefer BlockingQueue over raw wait/notify."
         );
 
         return DemoResult.of("02-sync", "wait-notify-needs-sync",
                 "wait/notify WITHOUT synchronized = IllegalMonitorStateException. Same object ka monitor hold karna zaroori hai.",
                 DemoResult.map(
                         "simpleTheory", simpleTheory,
-                        "waitSteps", WaitNotifyRevision.WAIT_STEPS,
-                        "notifySteps", WaitNotifyRevision.NOTIFY_STEPS,
-                        "notifyAllSteps", WaitNotifyRevision.NOTIFY_ALL_STEPS,
-                        "stateCheatSheet", WaitNotifyRevision.STATE_CHEAT_SHEET,
                         "rules", rules,
                         "interviewQandA", interviewQandA,
                         "logs", logs
@@ -410,18 +354,90 @@ public class SyncDemoService {
         consumer.join();
 
         return DemoResult.of("02-sync", "wait-notify",
-                "wait() releases the monitor; notify/notifyAll wakes waiters. Always wait in a while-loop (spurious wakeups).",
+                "wait() releases monitor; notify/notifyAll wakes waiters. Always while (!condition) wait().",
                 DemoResult.map(
                         "logs", logs,
                         "waitSteps", WaitNotifyRevision.WAIT_STEPS,
                         "notifySteps", WaitNotifyRevision.NOTIFY_STEPS,
                         "notifyAllSteps", WaitNotifyRevision.NOTIFY_ALL_STEPS,
-                        "stateCheatSheet", WaitNotifyRevision.STATE_CHEAT_SHEET,
-                        "whyWhileNotIf", List.of(
-                                "1. Spurious wakeup: thread bina notify ke bhi jag sakti hai.",
-                                "2. notifyAll ke baad kai threads uthengi — condition dubara check karo.",
-                                "3. Isliye: while (!condition) { wait(); }  — if (!condition) galat hai."
-                        )
+                        "whyWhile", "Spurious wake + notifyAll → condition dubara check: while (!cond) wait();"
+                ));
+    }
+
+    /**
+     * Spurious wakeup — simple meaning + interview angle.
+     * We also show the SAME bug class: wake-up jab condition abhi false hai (notifyAll race).
+     */
+    public DemoResult spuriousWakeup() throws InterruptedException {
+        List<String> logs = new CopyOnWriteArrayList<>();
+
+        // Demo: 1 item, 2 consumers — notifyAll wakes BOTH; only 1 item exists.
+        // with while → second consumer waits again (safe)
+        // with if → second consumer would proceed wrongly (unsafe) — we only run the SAFE path live
+        Object lock = new Object();
+        boolean[] hasItem = {false};
+        String[] box = {null};
+
+        Thread producer = new Thread(() -> {
+            synchronized (lock) {
+                box[0] = "pizza";
+                hasItem[0] = true;
+                logs.add("producer: put pizza, notifyAll()");
+                lock.notifyAll();
+            }
+        }, "producer");
+
+        Runnable safeConsumer = () -> {
+            String name = Thread.currentThread().getName();
+            synchronized (lock) {
+                // CORRECT: while — re-check after every wake (spurious OR notifyAll)
+                while (!hasItem[0]) {
+                    logs.add(name + ": condition false → wait()");
+                    try {
+                        lock.wait();
+                        logs.add(name + ": woke up → will RE-CHECK while (!hasItem)");
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        return;
+                    }
+                }
+                logs.add(name + ": took " + box[0]);
+                box[0] = null;
+                hasItem[0] = false; // second woken consumer must see false and wait again
+            }
+        };
+
+        Thread c1 = new Thread(safeConsumer, "consumer-1");
+        Thread c2 = new Thread(safeConsumer, "consumer-2");
+        c1.start();
+        c2.start();
+        Thread.sleep(80); // both enter wait
+        producer.start();
+        producer.join();
+        c1.join(1000);
+        c2.join(200); // one may still be waiting — interrupt to finish demo cleanly
+        if (c2.isAlive()) {
+            logs.add("consumer-2 still waiting (good — no item left). Interrupting to end demo.");
+            c2.interrupt();
+            c2.join(200);
+        }
+        if (c1.isAlive()) {
+            c1.interrupt();
+            c1.join(200);
+        }
+
+        Map<String, String> wrongVsRight = new LinkedHashMap<>();
+        wrongVsRight.put("WRONG", "if (!hasItem) { wait(); } take();  // wake ke baad check nahi");
+        wrongVsRight.put("RIGHT", "while (!hasItem) { wait(); } take(); // har wake pe dubara check");
+        wrongVsRight.put("why", "Spurious wake OR notifyAll ne galat thread uthaya — condition abhi false ho sakti hai");
+
+        return DemoResult.of("02-sync", "spurious-wakeup",
+                "Spurious wakeup = wait() se bina notify ke uth jaana. Fix: while (!condition) wait(); never if.",
+                DemoResult.map(
+                        "simpleDescription", WaitNotifyRevision.SPURIOUS_SIMPLE,
+                        "interviewQandA", WaitNotifyRevision.SPURIOUS_Q_AND_A,
+                        "wrongVsRight", wrongVsRight,
+                        "logs", logs
                 ));
     }
 
@@ -436,7 +452,7 @@ public class SyncDemoService {
 
         Thread writer = new Thread(() -> {
             holder.data = 42;
-            holder.ready = true; // happens-before: write to volatile flushes prior writes
+            holder.ready = true; // visibility: readers see ready + earlier writes
             logs.add("writer set data=42 and ready=true");
         }, "writer");
 
@@ -529,6 +545,7 @@ public class SyncDemoService {
                 raceCondition(),
                 waitNotifyNeedsSynchronized(),
                 waitNotifyProducerConsumer(),
+                spuriousWakeup(),
                 volatileVisibility(),
                 threadLocalDemo(),
                 synchronizedMethodVsBlock()
@@ -539,47 +556,41 @@ public class SyncDemoService {
     }
 
     /**
-     * Revision cheat-sheet: exact steps for wait / notify / notifyAll.
-     * Memorize these for interviews.
+     * Short revision steps (~3 YOE) — wait / notify / notifyAll / spurious.
      */
     static final class WaitNotifyRevision {
 
         static final List<String> WAIT_STEPS = List.of(
-                "wait() — pre-condition: current thread MUST already hold this object's monitor (synchronized).",
-                "1. Thread releases (gives up) the monitor lock.",
-                "2. Thread goes to WAITING state and enters the wait-set (waiting queue) of that object.",
-                "3. Thread stays parked until: notify() / notifyAll() / interrupt / (timed wait timeout).",
-                "4. After wake-up, thread does NOT run critical section immediately.",
-                "5. Thread moves toward BLOCKED / contending — it must RE-ACQUIRE the same monitor first.",
-                "6. Only after getting the lock again does wait() return and code after wait() continues.",
-                "7. Always call wait() inside while (!condition) — re-check condition after wake-up."
+                "1. Pehle synchronized se monitor hold karo.",
+                "2. wait() → monitor release + WAITING.",
+                "3. notify/notifyAll (ya timeout/interrupt) se wake.",
+                "4. Dubara monitor lo, tab wait() return — hamesha while (!condition)."
         );
 
         static final List<String> NOTIFY_STEPS = List.of(
-                "notify() — pre-condition: current thread MUST hold this object's monitor.",
-                "1. Picks ONE waiting thread from this object's wait-set (if any) — choice is arbitrary (not fairness).",
-                "2. That one thread is moved out of WAITING → it will contend for the lock (typically BLOCKED until lock free).",
-                "3. Other waiting threads (if any) stay in the wait-set — still WAITING.",
-                "4. Caller (notifier) still HOLDS the monitor until it exits synchronized — woken thread cannot grab lock yet.",
-                "5. When notifier releases the monitor, the woken thread tries to acquire it.",
-                "6. Prefer notifyAll() unless you are sure exactly one waiter type exists (easy to cause missed signal with notify)."
+                "1. Monitor hold karke notify().",
+                "2. Wait-set se EK thread uthati hai.",
+                "3. Wo thread lock ke liye wait karti hai; unsure ho to notifyAll prefer karo."
         );
 
         static final List<String> NOTIFY_ALL_STEPS = List.of(
-                "notifyAll() — pre-condition: current thread MUST hold this object's monitor.",
-                "1. ALL threads in this object's wait-set are moved out of WAITING.",
-                "2. They all become eligible to acquire the lock (typically enter BLOCKED / contention for the monitor).",
-                "3. They all TRY to acquire the same lock.",
-                "4. Only ONE thread gets the lock at a time; others remain blocked until lock is free again.",
-                "5. Each thread that acquires lock re-checks while (!condition) — losers may wait() again.",
-                "6. Notifier still holds lock until synchronized block ends — then competition starts."
+                "1. Monitor hold karke notifyAll().",
+                "2. Saari waiting threads uthengi aur lock compete karengi.",
+                "3. Ek time pe ek jeetegi; baaki while se condition check karke phir wait kar sakti hain."
         );
 
-        static final Map<String, String> STATE_CHEAT_SHEET = Map.of(
-                "WAITING", "called wait() — parked in wait-set, monitor already released",
-                "BLOCKED", "wants to enter synchronized / re-acquire monitor after wake — waiting for lock",
-                "RUNNABLE", "has the monitor (or ready to run) and executing",
-                "notify_vs_notifyAll", "notify = wake 1 waiter; notifyAll = wake all waiters (then 1 lock winner)"
+        static final List<String> SPURIOUS_SIMPLE = List.of(
+                "Spurious wakeup = wait() se bina notify ke bhi jag sakna (rare but legal).",
+                "Isliye if nahi — while (!condition) { wait(); }",
+                "notifyAll ke baad bhi while zaroori — har woken thread ke liye condition true nahi hoti.",
+                "Interview line: main hamesha wait loop mein condition re-check karta hoon."
+        );
+
+        static final List<String> SPURIOUS_Q_AND_A = List.of(
+                "Q: Spurious wakeup? → Bina proper notify ke wait() return.",
+                "Q: Fix? → while (!condition) wait();",
+                "Q: if kyun galat? → Wake ke baad condition false ho sakti hai.",
+                "Q: Sirf spurious? → Nahi — multi-waiter/notifyAll ke liye bhi while."
         );
 
         private WaitNotifyRevision() {}

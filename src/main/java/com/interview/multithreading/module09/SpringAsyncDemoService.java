@@ -14,14 +14,10 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * MODULE 09 — Spring @Async & scheduling
+ * MODULE 09 — Spring @Async (~3 YOE)
  *
- * Interview must-knows:
- * - @EnableAsync + @Async
- * - Self-invocation pitfall (JDK/CGLIB proxy) — this.asyncMethod() runs SYNCHRONOUSLY
- * - Custom executor via @Async("beanName")
- * - Return types: void | Future | CompletableFuture
- * - @Scheduled: fixedRate / fixedDelay / cron
+ * Must-knows: @EnableAsync + @Async, self-invocation pitfall (proxy),
+ * custom executor bean, void/CompletableFuture return, @Scheduled basics
  */
 @Service
 public class SpringAsyncDemoService {

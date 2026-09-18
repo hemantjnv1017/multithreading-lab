@@ -4,19 +4,16 @@ import com.interview.multithreading.common.DemoResult;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.*;
 
 /**
- * MODULE 01 — Thread basics
+ * MODULE 01 — Thread basics (~3–4 YOE interview focus)
  *
- * Interview must-knows:
- * - Thread vs Process
- * - Ways to create threads: extend Thread, implement Runnable, Callable + Future
- * - Thread lifecycle: NEW → RUNNABLE → BLOCKED/WAITING/TIMED_WAITING → TERMINATED
- * - start() vs run() (run() does NOT create a new thread)
- * - daemon vs user threads
- * - join(), interrupt(), sleep()
+ * High-frequency: Runnable vs Callable, start vs run, join ordering,
+ * wait vs sleep, daemon, interrupt, basic states
  */
 @Service
 public class BasicsDemoService {
@@ -24,73 +21,38 @@ public class BasicsDemoService {
     public DemoResult extendThread() throws InterruptedException {
         List<String> logs = new CopyOnWriteArrayList<>();
 
-        // WAY 1 (interview classic): subclass Thread and OVERRIDE run()
-        // This is TRUE "extends Thread" — work lives inside run(), not a Runnable lambda.
-        Thread t = new Thread() {
-            @Override
-            public void run() {
-                logs.add("extends-Thread run() on " + Thread.currentThread().getName()
-                        + " | class=" + getClass().getName());
-            }
-        };
-        t.setName("extend-thread-demo");
-        logs.add("State before start: " + t.getState()); // NEW
-        t.start(); // JVM calls our overridden run() on a NEW thread
-        t.join();  // wait until that thread finishes
-        logs.add("State after join: " + t.getState()); // TERMINATED
-
-        // Named class form (same idea, clearer in interviews)
-        WorkerThread named = new WorkerThread(logs);
-        named.setName("named-extends-Thread");
-        named.start();
-        named.join();
+        // Prefer Runnable in real code; extends Thread still asked in interviews
+        Thread t = new Thread(() -> logs.add("running on " + Thread.currentThread().getName()),
+                "demo-thread");
+        logs.add("before start: " + t.getState()); // NEW
+        t.start();
+        t.join();
+        logs.add("after join: " + t.getState()); // TERMINATED
 
         return DemoResult.of("01-basics", "extend-thread",
-                "extends Thread = override run(). Prefer Runnable (composition): class MyJob implements Runnable, then new Thread(job).",
-                DemoResult.map(
-                        "logs", logs,
-                        "note", "new Thread(() -> {...}) is Runnable, NOT extends. Empty { } after Thread(...) was a fake subclass."
-                ));
-    }
-
-    /** Clear "extends Thread" example for interviews. */
-    static class WorkerThread extends Thread {
-        private final List<String> logs;
-
-        WorkerThread(List<String> logs) {
-            this.logs = logs;
-        }
-
-        @Override
-        public void run() {
-            logs.add("WorkerThread.run() on " + getName() + " | extends Thread? "
-                    + (this instanceof Thread));
-        }
+                "Interview: prefer implements Runnable (composition). extends Thread rare in production.",
+                DemoResult.map("logs", logs));
     }
 
     public DemoResult runnableVsCallable() throws Exception {
         List<String> logs = new CopyOnWriteArrayList<>();
 
-        Runnable runnable = () -> logs.add("Runnable: no return, no checked exceptions");
-
+        Runnable runnable = () -> logs.add("Runnable → no return value");
         Callable<Integer> callable = () -> {
-            logs.add("Callable: can return a value and throw checked exceptions");
+            logs.add("Callable → returns value (and can throw checked Exception)");
             return 42;
         };
 
-        Thread rThread = new Thread(runnable, "runnable-worker");
-        rThread.start();
-        rThread.join();
+        Thread t = new Thread(runnable, "r-worker");
+        t.start();
+        t.join();
 
-        // Callable needs an ExecutorService (or FutureTask)
         try (ExecutorService pool = Executors.newSingleThreadExecutor()) {
-            Future<Integer> future = pool.submit(callable);
-            Integer result = future.get(2, TimeUnit.SECONDS);
-            logs.add("Callable result = " + result);
+            logs.add("Callable result=" + pool.submit(callable).get(1, TimeUnit.SECONDS));
         }
 
         return DemoResult.of("01-basics", "runnable-vs-callable",
-                "Runnable → void. Callable → V + Exception. Both run async via threads/pools.",
+                "Runnable = void. Callable = returns V + can throw. Submit Callable to ExecutorService.",
                 DemoResult.map("logs", logs));
     }
 
@@ -98,89 +60,152 @@ public class BasicsDemoService {
         List<String> timeline = new CopyOnWriteArrayList<>();
         Object lock = new Object();
 
-        Thread blocked = new Thread(() -> {
+        timeline.add("NEW = " + new Thread(() -> {}).getState());
+
+        Thread holder = new Thread(() -> {
             synchronized (lock) {
-                timeline.add("blocked-thread acquired lock");
                 try {
-                    Thread.sleep(300);
+                    Thread.sleep(150);
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                 }
             }
-        }, "will-block-peer");
+        }, "holder");
 
-        Thread waiter = new Thread(() -> {
+        Thread blocked = new Thread(() -> {
             synchronized (lock) {
-                timeline.add("waiter got lock after peer released → was BLOCKED while waiting for monitor");
+                timeline.add("blocked thread finally entered sync");
             }
-        }, "waiter-for-monitor");
+        }, "blocked");
+
+        holder.start();
+        Thread.sleep(30);
+        blocked.start();
+        Thread.sleep(20);
+        timeline.add("while holder holds monitor, peer state=" + blocked.getState()); // BLOCKED
 
         Thread sleeper = new Thread(() -> {
             try {
                 Thread.sleep(200);
-                timeline.add("sleeper finished TIMED_WAITING");
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
         }, "sleeper");
-
-        Thread parkWaiter = new Thread(() -> {
-            synchronized (lock) {
-                try {
-                    timeline.add("parkWaiter entering WAITING via wait()");
-                    lock.wait(500); // WAITING / TIMED_WAITING
-                    timeline.add("parkWaiter woke up");
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                }
-            }
-        }, "park-waiter");
-
-        timeline.add("NEW example: just-created state = " + new Thread(() -> {}).getState());
-
-        blocked.start();
-        Thread.sleep(50); // let blocked hold the lock
-        waiter.start();
-        Thread.sleep(20);
-        timeline.add("waiter state while peer holds lock: " + waiter.getState()); // BLOCKED
-
         sleeper.start();
         Thread.sleep(20);
-        timeline.add("sleeper state: " + sleeper.getState()); // TIMED_WAITING
+        timeline.add("sleep → " + sleeper.getState()); // TIMED_WAITING
 
-        // release blocked so parkWaiter can demo wait
+        holder.join();
         blocked.join();
-        waiter.join();
-
-        parkWaiter.start();
-        Thread.sleep(50);
-        timeline.add("parkWaiter state during wait: " + parkWaiter.getState());
-        parkWaiter.join();
         sleeper.join();
+        timeline.add("done → TERMINATED");
 
         return DemoResult.of("01-basics", "thread-states",
-                "Memorize: NEW, RUNNABLE, BLOCKED (monitor), WAITING, TIMED_WAITING, TERMINATED.",
-                DemoResult.map("timeline", timeline));
+                "Know: NEW, RUNNABLE, BLOCKED (monitor), WAITING, TIMED_WAITING, TERMINATED.",
+                DemoResult.map(
+                        "timeline", timeline,
+                        "quick", Map.of(
+                                "BLOCKED", "waiting to enter synchronized",
+                                "WAITING", "wait() / join()",
+                                "TIMED_WAITING", "sleep() / wait(timeout)"
+                        )
+                ));
     }
 
     public DemoResult startVsRun() throws InterruptedException {
         List<String> logs = new CopyOnWriteArrayList<>();
         String main = Thread.currentThread().getName();
+        Runnable task = () -> logs.add("on " + Thread.currentThread().getName());
 
-        Runnable task = () -> logs.add("executed on thread=" + Thread.currentThread().getName());
-
-        // WRONG for concurrency: run() executes on calling thread
-        task.run();
-        logs.add("after task.run() — still on main? " + Thread.currentThread().getName().equals(main));
-
-        // CORRECT: start() creates a new OS/platform thread
-        Thread t = new Thread(task, "real-new-thread");
-        t.start();
+        task.run(); // same thread — NOT concurrent
+        Thread t = new Thread(task, "real-thread");
+        t.start();  // new thread
         t.join();
 
         return DemoResult.of("01-basics", "start-vs-run",
-                "Calling run() directly = sync on current thread. Always use start() or an Executor.",
-                DemoResult.map("mainThread", main, "logs", logs));
+                "run() = current thread pe sync call. start() = naya thread. Interview favorite trap.",
+                DemoResult.map("main", main, "logs", logs));
+    }
+
+    /** Very common: ensure T1 → T2 → T3 order using join(). */
+    public DemoResult joinOrdering() throws InterruptedException {
+        List<String> order = new CopyOnWriteArrayList<>();
+
+        Thread t1 = new Thread(() -> order.add("T1"), "T1");
+        Thread t2 = new Thread(() -> order.add("T2"), "T2");
+        Thread t3 = new Thread(() -> order.add("T3"), "T3");
+
+        t1.start();
+        t1.join(); // wait until T1 finishes
+        t2.start();
+        t2.join();
+        t3.start();
+        t3.join();
+
+        return DemoResult.of("01-basics", "join-ordering",
+                "Q: T1 then T2 then T3 kaise? → start + join chain. (CountDownLatch bhi option hai.)",
+                DemoResult.map("executionOrder", order));
+    }
+
+    /** Extremely common: wait() vs sleep(). */
+    public DemoResult waitVsSleep() throws InterruptedException {
+        List<String> logs = new CopyOnWriteArrayList<>();
+        Object lock = new Object();
+
+        // sleep: does NOT release monitor
+        Thread sleeper = new Thread(() -> {
+            synchronized (lock) {
+                logs.add("sleeper: holding lock, sleeping 120ms (lock NOT released)");
+                try {
+                    Thread.sleep(120);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+                logs.add("sleeper: woke, still in synchronized");
+            }
+        }, "sleeper");
+
+        Thread wantsLock = new Thread(() -> {
+            try {
+                Thread.sleep(30);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            logs.add("peer: trying synchronized while sleeper sleeps → will BLOCK");
+            synchronized (lock) {
+                logs.add("peer: got lock after sleeper finished");
+            }
+        }, "peer");
+
+        sleeper.start();
+        wantsLock.start();
+        sleeper.join();
+        wantsLock.join();
+
+        // wait: releases monitor (needs synchronized)
+        Thread waiter = new Thread(() -> {
+            synchronized (lock) {
+                try {
+                    logs.add("waiter: wait(80) → releases lock + WAITING");
+                    lock.wait(80);
+                    logs.add("waiter: back after wait");
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+        }, "waiter");
+        waiter.start();
+        waiter.join();
+
+        Map<String, String> diff = new LinkedHashMap<>();
+        diff.put("sleep()", "Thread class. Monitor release NAHI. Kisi notify ki zarurat nahi.");
+        diff.put("wait()", "Object class. Monitor RELEASE. Synchronized chahiye. notify se wake.");
+        diff.put("use_sleep", "Delay / pause — lock free rakhna ho to sync ke bahar sleep.");
+        diff.put("use_wait", "Condition ke liye wait (producer-consumer).");
+
+        return DemoResult.of("01-basics", "wait-vs-sleep",
+                "sleep = time pass, lock rakho. wait = lock chhodo + condition wait. Top 3–4 YOE question.",
+                DemoResult.map("difference", diff, "logs", logs));
     }
 
     public DemoResult joinInterruptDaemon() throws InterruptedException {
@@ -188,49 +213,41 @@ public class BasicsDemoService {
 
         Thread worker = new Thread(() -> {
             try {
-                logs.add("worker sleeping...");
-                Thread.sleep(5000);
-                logs.add("worker done (should NOT appear if interrupted)");
+                Thread.sleep(2000);
+                logs.add("should not print if interrupted");
             } catch (InterruptedException e) {
-                logs.add("worker caught InterruptedException — restoring interrupt flag");
+                logs.add("InterruptedException → restore flag");
                 Thread.currentThread().interrupt();
             }
-        }, "interruptible-worker");
+        }, "worker");
 
-        Thread daemon = new Thread(() -> {
-            while (!Thread.currentThread().isInterrupted()) {
-                try {
-                    Thread.sleep(100);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                }
-            }
-        }, "daemon-helper");
-        daemon.setDaemon(true); // JVM exits even if daemon is still running
+        Thread daemon = new Thread(() -> {}, "daemon");
+        daemon.setDaemon(true);
 
         worker.start();
         daemon.start();
-        Thread.sleep(100);
+        Thread.sleep(50);
         worker.interrupt();
         worker.join();
-        logs.add("worker alive after join? " + worker.isAlive());
-        logs.add("daemon isDaemon=" + daemon.isDaemon());
+        logs.add("daemon=" + daemon.isDaemon() + " (JVM exit pe daemon ruk sakta hai)");
 
         return DemoResult.of("01-basics", "join-interrupt-daemon",
-                "Always restore interrupt flag after catching InterruptedException. Daemon threads die with JVM.",
+                "interrupt → catch InterruptedException aur flag restore. Daemon = background, JVM exit pe die.",
                 DemoResult.map("logs", logs));
     }
 
     public DemoResult all() throws Exception {
-        List<DemoResult> parts = new ArrayList<>();
-        parts.add(extendThread());
-        parts.add(runnableVsCallable());
-        parts.add(threadStates());
-        parts.add(startVsRun());
-        parts.add(joinInterruptDaemon());
+        List<DemoResult> parts = List.of(
+                extendThread(),
+                runnableVsCallable(),
+                threadStates(),
+                startVsRun(),
+                joinOrdering(),
+                waitVsSleep(),
+                joinInterruptDaemon()
+        );
         return DemoResult.of("01-basics", "all",
-                "Complete Module 01 — move to /api/modules/02-sync next.",
-                DemoResult.map("demos", parts.stream().map(DemoResult::demo).toList(),
-                        "results", parts));
+                "Module 01 done → /api/modules/02-sync",
+                DemoResult.map("demos", parts.stream().map(DemoResult::demo).toList(), "results", parts));
     }
 }

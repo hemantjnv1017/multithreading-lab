@@ -8,19 +8,11 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 /**
  * Entry point for the Multithreading Lab.
  *
- * Learning path (in order):
- *  01 Basics        → Thread, Runnable, Callable, Thread states
- *  02 Sync          → monitor locks, synchronized, wait/notify, volatile, ThreadLocal
- *  03 Locks         → ReentrantLock, ReadWriteLock, Condition, StampedLock
- *  04 Executors     → Thread pools, Future, ScheduledExecutor
- *  05 Concurrent    → ConcurrentHashMap, BlockingQueue, Latch, Barrier, Semaphore
- *  06 Completable   → CompletableFuture chaining & composition
- *  07 ForkJoin      → ForkJoinPool, RecursiveTask, parallel streams
- *  08 Problems      → Race, deadlock, livelock, starvation (and fixes)
- *  09 Spring Async  → @Async, custom TaskExecutor
- *  10 Virtual       → Virtual threads (Project Loom / Java 21)
+ * Learning path (~3 YOE interview focus):
+ *  01 Basics → 02 Sync → 03 Locks → 04 Executors → 05 Concurrent
+ *  06 CompletableFuture → 07 ForkJoin → 08 Problems → 09 Spring → 10 Virtual
  *
- * Hit GET /api/modules for the catalog, then call each demo endpoint.
+ * Swagger: /swagger-ui/index.html  |  Catalog: GET /api/modules
  */
 @SpringBootApplication
 @EnableAsync

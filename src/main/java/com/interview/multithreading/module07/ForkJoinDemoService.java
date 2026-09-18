@@ -8,38 +8,30 @@ import java.util.concurrent.*;
 import java.util.stream.LongStream;
 
 /**
- * MODULE 07 — Fork/Join & parallel streams
+ * MODULE 07 — Fork/Join & parallel streams (~3 YOE)
  *
- * Interview must-knows:
- * - Divide-and-conquer with ForkJoinPool
- * - RecursiveTask (returns value) vs RecursiveAction (void)
- * - fork() / join() / compute() / invoke()
- * - work-stealing
- * - parallelStream() uses commonPool — careful in latency-sensitive apps
- * - when NOT to use parallel streams (tiny datasets, blocking I/O)
+ * Must-knows: ForkJoin divide-and-conquer idea, RecursiveTask,
+ * parallelStream uses commonPool — chhote data / blocking I/O pe avoid
  */
 @Service
 public class ForkJoinDemoService {
 
     public DemoResult recursiveSum() {
-        long[] numbers = LongStream.rangeClosed(1, 1_000_000).toArray();
-        long expected = (1_000_000L * 1_000_001L) / 2;
+        long[] numbers = LongStream.rangeClosed(1, 200_000).toArray();
+        long expected = (200_000L * 200_001L) / 2;
 
-        ForkJoinPool pool = new ForkJoinPool(Runtime.getRuntime().availableProcessors());
-        long start = System.currentTimeMillis();
+        ForkJoinPool pool = new ForkJoinPool();
         long result = pool.invoke(new SumTask(numbers, 0, numbers.length));
-        long elapsed = System.currentTimeMillis() - start;
         pool.shutdown();
 
         return DemoResult.of("07-forkjoin", "recursive-sum",
-                "RecursiveTask splits work until threshold, then fork/join. Classic divide-and-conquer.",
-                DemoResult.map("result", result, "expected", expected, "match", result == expected,
-                        "elapsedMs", elapsed, "threshold", SumTask.THRESHOLD));
+                "ForkJoin: badi problem todh ke parallel. Interview: CPU-bound recursive work.",
+                DemoResult.map("result", result, "expected", expected, "match", result == expected));
     }
 
     public DemoResult parallelVsSequentialStream() {
         List<Integer> data = new ArrayList<>();
-        for (int i = 0; i < 2_000_000; i++) {
+        for (int i = 0; i < 500_000; i++) {
             data.add(i);
         }
 
@@ -52,13 +44,12 @@ public class ForkJoinDemoService {
         long parMs = System.currentTimeMillis() - t2;
 
         return DemoResult.of("07-forkjoin", "parallel-stream",
-                "parallelStream → ForkJoinPool.commonPool(). Great for CPU-bound, bad for blocking I/O.",
+                "parallelStream → commonPool. CPU-bound OK; blocking I/O / chhota data pe avoid.",
                 DemoResult.map(
                         "sequentialSum", seq,
                         "parallelSum", par,
                         "sequentialMs", seqMs,
-                        "parallelMs", parMs,
-                        "commonPoolParallelism", ForkJoinPool.commonPool().getParallelism()
+                        "parallelMs", parMs
                 ));
     }
 
@@ -96,7 +87,7 @@ public class ForkJoinDemoService {
     }
 
     static class SumTask extends RecursiveTask<Long> {
-        static final int THRESHOLD = 50_000;
+        static final int THRESHOLD = 20_000;
         private final long[] arr;
         private final int start;
         private final int end;

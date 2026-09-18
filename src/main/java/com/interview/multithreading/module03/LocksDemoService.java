@@ -4,19 +4,21 @@ import com.interview.multithreading.common.DemoResult;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.*;
 import java.util.concurrent.locks.*;
 
 /**
- * MODULE 03 — Explicit locks (java.util.concurrent.locks)
+ * MODULE 03 — Explicit locks (~3 YOE)
  *
- * Interview must-knows:
- * - ReentrantLock vs synchronized (tryLock, fairness, interruptible lock)
+ * Must-knows:
+ * - ReentrantLock vs synchronized (tryLock, unlock in finally)
+ * - lock() vs tryLock() — lockVsTryLock()
  * - ReadWriteLock — many readers OR one writer
- * - Condition — multiple wait-sets (better than single wait/notify monitor)
- * - StampedLock — optimistic reads (advanced)
- * - Always unlock in finally
+ * - Condition — wait/signal with Lock (basic idea)
+ * - StampedLock — name-level awareness (optimistic read)
  */
 @Service
 public class LocksDemoService {
@@ -61,6 +63,104 @@ public class LocksDemoService {
         return DemoResult.of("03-locks", "reentrant-lock",
                 "ReentrantLock: tryLock, lockInterruptibly, fairness. Always unlock() in finally.",
                 DemoResult.map("fair", lock.isFair(), "logs", logs));
+    }
+
+    /**
+     * Interview favorite: lock() vs tryLock() on ReentrantLock / Lock API.
+     */
+    public DemoResult lockVsTryLock() throws InterruptedException {
+        List<String> logs = new CopyOnWriteArrayList<>();
+        ReentrantLock lock = new ReentrantLock();
+
+        // Hold the lock so the other thread must wait / fail
+        Thread holder = new Thread(() -> {
+            lock.lock();
+            try {
+                logs.add("HOLDER: got lock via lock(), sleeping 300ms");
+                Thread.sleep(300);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            } finally {
+                lock.unlock();
+                logs.add("HOLDER: unlocked");
+            }
+        }, "holder");
+
+        Thread tryLockThread = new Thread(() -> {
+            try {
+                Thread.sleep(50); // ensure holder has the lock
+                // tryLock() — non-blocking: immediate true/false
+                boolean got = lock.tryLock();
+                logs.add("TRYLOCK: tryLock() immediate → " + got + " (false expected while holder sleeps)");
+                if (got) {
+                    try {
+                        logs.add("TRYLOCK: unexpected acquire");
+                    } finally {
+                        lock.unlock();
+                    }
+                } else {
+                    logs.add("TRYLOCK: skipped work / fallback path (no waiting)");
+                }
+
+                // tryLock(timeout) — wait at most N, then give up
+                boolean gotTimed = lock.tryLock(500, TimeUnit.MILLISECONDS);
+                logs.add("TRYLOCK: tryLock(500ms) → " + gotTimed);
+                if (gotTimed) {
+                    try {
+                        logs.add("TRYLOCK: acquired after wait (holder finished)");
+                    } finally {
+                        lock.unlock();
+                    }
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                logs.add("TRYLOCK: interrupted");
+            }
+        }, "trylock-worker");
+
+        Thread lockThread = new Thread(() -> {
+            try {
+                Thread.sleep(50);
+                logs.add("LOCK: calling lock() — will BLOCK until holder unlocks (no timeout)");
+                lock.lock(); // blocks here
+                try {
+                    logs.add("LOCK: finally acquired after waiting");
+                } finally {
+                    lock.unlock();
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }, "lock-worker");
+
+        holder.start();
+        tryLockThread.start();
+        lockThread.start();
+        holder.join();
+        tryLockThread.join();
+        lockThread.join();
+
+        Map<String, String> comparison = new LinkedHashMap<>();
+        comparison.put("lock()", "Lock milne tak block — wait forever");
+        comparison.put("tryLock()", "Turant true/false — fail pe block nahi");
+        comparison.put("tryLock(timeout)", "Max N time wait, phir false");
+        comparison.put("synced note", "synchronized mein tryLock nahi hota — isliye kabhi ReentrantLock");
+
+        List<String> interviewQandA = List.of(
+                "Q: lock vs tryLock? → lock blocks; tryLock boolean + fail-fast.",
+                "Q: tryLock fail? → false → skip/fallback/retry later.",
+                "Q: Kab tryLock? → Timeout, deadlock avoid, responsive path.",
+                "Q: unlock kab? → Sirf acquire success pe, finally mein.",
+                "Q: Common bug? → tryLock false pe bhi unlock()."
+        );
+
+        return DemoResult.of("03-locks", "lock-vs-trylock",
+                "lock() waits forever; tryLock() fails fast; tryLock(timeout) bounds wait. unlock only if acquired.",
+                DemoResult.map(
+                        "comparison", comparison,
+                        "interviewQandA", interviewQandA,
+                        "logs", logs
+                ));
     }
 
     public DemoResult readWriteLockDemo() throws InterruptedException {
@@ -222,13 +322,14 @@ public class LocksDemoService {
         logs.add("post-write optimistic valid=" + valid + " distance=" + dist);
 
         return DemoResult.of("03-locks", "stamped-lock",
-                "StampedLock optimistic read: no blocking if no write; validate() then fallback. Not reentrant!",
+                "StampedLock: optimistic read + validate(); fail pe readLock. Day-to-day rare — naam/idea jaano.",
                 DemoResult.map("logs", logs, "distance", dist));
     }
 
     public DemoResult all() throws Exception {
         List<DemoResult> parts = List.of(
                 reentrantLockFeatures(),
+                lockVsTryLock(),
                 readWriteLockDemo(),
                 conditionDemo(),
                 stampedLockOptimistic()

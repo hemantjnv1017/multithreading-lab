@@ -8,15 +8,10 @@ import java.util.concurrent.*;
 import java.util.stream.Collectors;
 
 /**
- * MODULE 06 — CompletableFuture (async composition)
+ * MODULE 06 — CompletableFuture (~3 YOE)
  *
- * Interview must-knows:
- * - supplyAsync / runAsync / completedFuture
- * - thenApply (map) vs thenCompose (flatMap) vs thenAccept / thenRun
- * - thenCombine / thenAcceptBoth / applyToEither / acceptEither
- * - allOf / anyOf
- * - exceptionally / handle / whenComplete
- * - Default ForkJoinPool.commonPool() vs custom Executor
+ * Must-knows: supplyAsync, thenApply vs thenCompose, thenCombine,
+ * allOf/anyOf, exceptionally, custom Executor (commonPool pe overload mat daalo)
  */
 @Service
 public class CompletableFutureDemoService {

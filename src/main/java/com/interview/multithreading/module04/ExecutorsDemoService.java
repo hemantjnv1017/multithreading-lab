@@ -8,15 +8,11 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * MODULE 04 — Executors & thread pools
+ * MODULE 04 — Executors & thread pools (~3 YOE)
  *
- * Interview must-knows:
- * - Executor / ExecutorService / ScheduledExecutorService hierarchy
- * - Fixed, cached, single, work-stealing, custom ThreadPoolExecutor
- * - Core vs max pool size, queue, RejectedExecutionHandler
- * - Future.get(), cancel(), isDone()
- * - shutdown() vs shutdownNow()
- * - Why Executors.newFixedThreadPool can OOM (unbounded queue) — prefer custom TPE
+ * Must-knows: ExecutorService basics, fixed/cached/custom ThreadPoolExecutor
+ * (core, max, queue, rejection), Future.get/cancel, shutdown vs shutdownNow,
+ * prefer bounded queue over Executors.newFixedThreadPool in production
  */
 @Service
 public class ExecutorsDemoService {

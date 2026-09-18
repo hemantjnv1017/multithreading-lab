@@ -9,14 +9,13 @@ import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
- * MODULE 08 — Classic concurrency problems (and how to fix them)
+ * MODULE 08 — Classic concurrency problems (~3 YOE)
  *
- * Interview must-knows:
- * - Race condition
- * - Deadlock (4 Coffman conditions) + prevention
- * - Livelock
- * - Starvation
- * - How to detect (jstack / thread dump) and fix
+ * Must-knows:
+ * - Race condition + fix (sync/lock/atomic)
+ * - Deadlock: mutual wait for locks — prevent with lock ordering / tryLock timeout
+ * - Livelock / starvation — basic idea
+ * - Thread dump se stuck threads dekhna (high-level)
  */
 @Service
 public class ProblemsDemoService {
@@ -156,7 +155,7 @@ public class ProblemsDemoService {
         f2.join();
 
         return DemoResult.of("08-problems", "deadlock",
-                "Deadlock needs: mutual exclusion, hold-and-wait, no preemption, circular wait. Fix: lock ordering / tryLock timeouts.",
+                "Deadlock = threads ek doosre ka lock wait karti hain. Fix: same lock order, ya tryLock(timeout).",
                 DemoResult.map("deadlockObserved", deadlocked, "logs", logs, "fixLogs", fixLogs));
     }
 

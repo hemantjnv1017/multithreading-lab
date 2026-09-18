@@ -8,6 +8,18 @@ spring:
     virtual:
       enabled: true
 
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    disable-swagger-default-url: true
+    tags-sorter: alpha
+    operations-sorter: method
+    try-it-out-enabled: true
+    filter: true
+    display-request-duration: true
+
 management:
   endpoints:
     web:

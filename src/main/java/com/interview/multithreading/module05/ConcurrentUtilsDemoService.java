@@ -8,16 +8,14 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * MODULE 05 — java.util.concurrent utilities
+ * MODULE 05 — java.util.concurrent utilities (~3 YOE)
  *
- * Interview must-knows:
- * - ConcurrentHashMap (segment/CAS; no ConcurrentModificationException on iteration)
- * - BlockingQueue: Array/Linked/Priority/Synchronous/Delay
- * - CountDownLatch — one-shot gate (threads wait until count → 0)
- * - CyclicBarrier — reusable barrier (parties await each other)
- * - Semaphore — permits (connection pools, rate limiting)
- * - Phaser — flexible multi-phase barrier (advanced)
- * - Exchanger — two threads swap data
+ * Must-knows:
+ * - ConcurrentHashMap (thread-safe; merge/compute) vs HashMap
+ * - BlockingQueue for producer-consumer
+ * - CountDownLatch vs CyclicBarrier vs Semaphore (basic difference)
+ * - Semaphore counting/binary — pool/rate-limit use cases
+ * - Phaser/Exchanger — naam-level (advanced / less common in 3 YOE rounds)
  */
 @Service
 public class ConcurrentUtilsDemoService {
@@ -171,7 +169,9 @@ public class ConcurrentUtilsDemoService {
 
     public DemoResult semaphoreDemo() throws InterruptedException {
         List<String> logs = new CopyOnWriteArrayList<>();
-        Semaphore dbConnections = new Semaphore(2); // max 2 concurrent "connections"
+
+        // Counting semaphore = connection pool style (max 2 at a time)
+        Semaphore dbConnections = new Semaphore(2);
         ExecutorService pool = Executors.newFixedThreadPool(5);
         CountDownLatch done = new CountDownLatch(5);
 
@@ -179,13 +179,13 @@ public class ConcurrentUtilsDemoService {
             int id = i;
             pool.submit(() -> {
                 try {
-                    logs.add("client-" + id + " waiting for permit, available=" + dbConnections.availablePermits());
+                    logs.add("client-" + id + " waiting, available=" + dbConnections.availablePermits());
                     dbConnections.acquire();
                     try {
                         logs.add("client-" + id + " GOT connection");
                         Thread.sleep(80);
                     } finally {
-                        dbConnections.release();
+                        dbConnections.release(); // always release — else permit leak
                         logs.add("client-" + id + " released");
                     }
                 } catch (InterruptedException e) {
@@ -198,9 +198,39 @@ public class ConcurrentUtilsDemoService {
         done.await();
         pool.shutdown();
 
+        // ~3 YOE interview notes (keep it practical, not textbook-deep)
+        Map<String, String> types = new LinkedHashMap<>();
+        types.put("counting", "permits > 1 → N threads ek saath resource use kar sakti hain. new Semaphore(5)");
+        types.put("binary", "permits = 1 → ek time pe ek thread (mutex jaisa simple gate)");
+        types.put("fair_vs_unfair", "new Semaphore(n, true) = fair (FIFO, starvation kam). Default unfair = thoda faster");
+
+        Map<String, String> useCases = new LinkedHashMap<>();
+        useCases.put("1", "DB / HTTP connection pool — max N concurrent connections");
+        useCases.put("2", "Rate limit — ek time pe max N API calls");
+        useCases.put("3", "Heavy tasks throttle — 100 tasks submit, lekin sirf 5 parallel chalen");
+
+        Map<String, String> benefits = new LinkedHashMap<>();
+        benefits.put("1", "Concurrency ka clear limit (N) set kar sakte ho");
+        benefits.put("2", "tryAcquire() se fail-fast — forever block avoid");
+        benefits.put("3", "Lock se simple jab sirf 'kitne parallel' control karna ho");
+
+        List<String> interviewQandA = List.of(
+                "Q: Semaphore? → Permits ka counter. acquire() le, release() wapas.",
+                "Q: Types? → Counting (N) aur Binary (1). Fair/unfair constructor se.",
+                "Q: Kab use? → Pool size limit, rate limit, parallel task cap.",
+                "Q: Lock se fark? → Lock usually 1 thread. Semaphore 1 se N tak allow.",
+                "Q: Common mistake? → release() finally mein miss → hang jaisa behave."
+        );
+
         return DemoResult.of("05-concurrent", "semaphore",
-                "Semaphore = permits. Fair semaphore prevents starvation. Used for rate limiting & pool caps.",
-                DemoResult.map("logs", logs));
+                "Semaphore = permits se concurrency limit. Counting (N) / binary (1). Pools & rate limits. release() in finally.",
+                DemoResult.map(
+                        "types", types,
+                        "useCases", useCases,
+                        "benefits", benefits,
+                        "interviewQandA", interviewQandA,
+                        "logs", logs
+                ));
     }
 
     public DemoResult phaserAndExchanger() throws Exception {
@@ -248,7 +278,7 @@ public class ConcurrentUtilsDemoService {
         exDone.await();
 
         return DemoResult.of("05-concurrent", "phaser-exchanger",
-                "Phaser = multi-phase + dynamic parties. Exchanger = pairwise handoff between 2 threads.",
+                "Phaser/Exchanger rarely deep-dive at 3 YOE — Latch/Barrier/Semaphore zyada poochhe jaate hain. Demo for awareness.",
                 DemoResult.map("logs", logs));
     }
 

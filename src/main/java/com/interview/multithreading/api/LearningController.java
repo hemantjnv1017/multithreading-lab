@@ -11,6 +11,9 @@ import com.interview.multithreading.module07.ForkJoinDemoService;
 import com.interview.multithreading.module08.ProblemsDemoService;
 import com.interview.multithreading.module09.SpringAsyncDemoService;
 import com.interview.multithreading.module10.VirtualThreadsDemoService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.LinkedHashMap;
@@ -20,6 +23,10 @@ import java.util.Map;
 /**
  * REST catalog for every multithreading demo.
  *
+ * Prefer Swagger UI over Postman:
+ *   http://localhost:8080/swagger-ui/index.html
+ *   http://localhost:8080/docs
+ *
  * Workflow:
  *  1. GET  /api/modules              → learning path
  *  2. GET  /api/modules/{id}         → run all demos in a module
@@ -27,6 +34,7 @@ import java.util.Map;
  */
 @RestController
 @RequestMapping("/api")
+@Tag(name = "Learning modules", description = "Catalog + run multithreading demos")
 public class LearningController {
 
     private final BasicsDemoService basics;
@@ -64,23 +72,27 @@ public class LearningController {
     }
 
     @GetMapping("/modules")
+    @Operation(
+            summary = "List all learning modules",
+            description = "Start here. Returns module ids, summaries, and demo URLs."
+    )
     public Map<String, Object> catalog() {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("title", "Java Multithreading Lab — Interview Path");
         body.put("howToLearn", List.of(
-                "Start from module 01 and go in order",
-                "Call GET /api/modules/{id} to run all demos",
-                "Read the interviewTip field in every response aloud (explain like an interview)",
-                "Open the matching *DemoService.java and read the comments",
-                "Change the code (break it, fix it) — that builds real muscle memory"
+                "Start from module 01 and go in order (~3 YOE interview depth)",
+                "Call GET /api/modules/{id} to run demos",
+                "Read interviewTip + short Q&A — explain in 30–60 seconds",
+                "Open *DemoService.java, break it, fix it"
         ));
         body.put("modules", List.of(
-                module("01-basics", "Thread, Runnable, Callable, states, start vs run, join/interrupt/daemon",
-                        List.of("extend-thread", "runnable-vs-callable", "thread-states", "start-vs-run", "join-interrupt-daemon", "all")),
-                module("02-sync", "Monitor, CAS, race, wait/notify MUST use synchronized, volatile, ThreadLocal",
-                        List.of("monitor-locks", "cas", "race-condition", "wait-notify-needs-sync", "wait-notify", "volatile-visibility", "thread-local", "synchronized-scopes", "all")),
-                module("03-locks", "ReentrantLock, ReadWriteLock, Condition, StampedLock",
-                        List.of("reentrant-lock", "read-write-lock", "condition", "stamped-lock", "all")),
+                module("01-basics", "Thread basics: Runnable/Callable, start vs run, join order, wait vs sleep",
+                        List.of("extend-thread", "runnable-vs-callable", "thread-states", "start-vs-run",
+                                "join-ordering", "wait-vs-sleep", "join-interrupt-daemon", "all")),
+                module("02-sync", "Monitor, CAS, race, wait/notify, spurious wakeup, volatile, ThreadLocal",
+                        List.of("monitor-locks", "cas", "race-condition", "wait-notify-needs-sync", "wait-notify", "spurious-wakeup", "volatile-visibility", "thread-local", "synchronized-scopes", "all")),
+                module("03-locks", "ReentrantLock, lock vs tryLock, ReadWriteLock, Condition, StampedLock",
+                        List.of("reentrant-lock", "lock-vs-trylock", "read-write-lock", "condition", "stamped-lock", "all")),
                 module("04-executors", "Thread pools, Future, ScheduledExecutor, custom TPE",
                         List.of("pool-types", "custom-tpe", "future", "scheduled", "invoke-all-any", "all")),
                 module("05-concurrent", "CHM, BlockingQueue, Latch, Barrier, Semaphore, Phaser",
@@ -100,7 +112,20 @@ public class LearningController {
     }
 
     @GetMapping("/modules/{moduleId}")
-    public DemoResult runModule(@PathVariable String moduleId) throws Exception {
+    @Operation(
+            summary = "Run ALL demos in a module",
+            description = "Example moduleId: 01-basics, 02-sync, 03-locks, ..."
+    )
+    public DemoResult runModule(
+            @Parameter(
+                    description = "Module id from catalog",
+                    example = "02-sync",
+                    schema = @io.swagger.v3.oas.annotations.media.Schema(allowableValues = {
+                            "01-basics", "02-sync", "03-locks", "04-executors", "05-concurrent",
+                            "06-completable", "07-forkjoin", "08-problems", "09-spring", "10-virtual"
+                    })
+            )
+            @PathVariable String moduleId) throws Exception {
         return switch (moduleId) {
             case "01-basics" -> basics.all();
             case "02-sync" -> sync.all();
@@ -117,13 +142,23 @@ public class LearningController {
     }
 
     @GetMapping("/modules/{moduleId}/{demo}")
-    public DemoResult runDemo(@PathVariable String moduleId, @PathVariable String demo) throws Exception {
+    @Operation(
+            summary = "Run ONE demo",
+            description = "Example: moduleId=02-sync, demo=cas  |  moduleId=02-sync, demo=wait-notify"
+    )
+    public DemoResult runDemo(
+            @Parameter(description = "Module id", example = "02-sync")
+            @PathVariable String moduleId,
+            @Parameter(description = "Demo name from catalog (e.g. cas, monitor-locks, all)", example = "cas")
+            @PathVariable String demo) throws Exception {
         return switch (moduleId) {
             case "01-basics" -> switch (demo) {
                 case "extend-thread" -> basics.extendThread();
                 case "runnable-vs-callable" -> basics.runnableVsCallable();
                 case "thread-states" -> basics.threadStates();
                 case "start-vs-run" -> basics.startVsRun();
+                case "join-ordering" -> basics.joinOrdering();
+                case "wait-vs-sleep" -> basics.waitVsSleep();
                 case "join-interrupt-daemon" -> basics.joinInterruptDaemon();
                 case "all" -> basics.all();
                 default -> unknown(moduleId, demo);
@@ -134,6 +169,7 @@ public class LearningController {
                 case "race-condition" -> sync.raceCondition();
                 case "wait-notify-needs-sync" -> sync.waitNotifyNeedsSynchronized();
                 case "wait-notify" -> sync.waitNotifyProducerConsumer();
+                case "spurious-wakeup" -> sync.spuriousWakeup();
                 case "volatile-visibility" -> sync.volatileVisibility();
                 case "thread-local" -> sync.threadLocalDemo();
                 case "synchronized-scopes" -> sync.synchronizedMethodVsBlock();
@@ -142,6 +178,7 @@ public class LearningController {
             };
             case "03-locks" -> switch (demo) {
                 case "reentrant-lock" -> locks.reentrantLockFeatures();
+                case "lock-vs-trylock" -> locks.lockVsTryLock();
                 case "read-write-lock" -> locks.readWriteLockDemo();
                 case "condition" -> locks.conditionDemo();
                 case "stamped-lock" -> locks.stampedLockOptimistic();
